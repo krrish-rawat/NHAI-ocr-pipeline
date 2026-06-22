@@ -5,8 +5,30 @@ from typing import Any
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
 from PIL import Image
+from pydantic import BaseModel, Field, create_model
 
 from src.services.settings import settings
+
+
+def build_response_schema(attributes: list[str]) -> type[BaseModel]:
+    """
+    Dynamically build a Pydantic model matching the user's requested attributes.
+    Passing this to Gemini as response_schema enables constrained decoding.
+    Note: Gemini's schema serializer does not support Field(default=...), so
+    fields are declared as plain (str, ...) — required strings.
+    """
+    record_fields: dict[str, Any] = {
+        attr: (str, Field(description=f"Extracted value for {attr}. Use 'Null' if not found."))
+        for attr in attributes
+    }
+    RecordModel = create_model("ExtractionRecord", **record_fields)
+
+    class ExtractionResponse(BaseModel):
+        records: list[RecordModel] = Field(  # type: ignore[valid-type]
+            description="One object per person/entity found in the document."
+        )
+
+    return ExtractionResponse
 
 
 class GeminiExtractionClient:
@@ -28,7 +50,7 @@ class GeminiExtractionClient:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not configured.")
 
         model = genai.GenerativeModel(self.model_name)
-        generation_config = {
+        generation_config: dict[str, Any] = {
             "response_mime_type": "application/json",
             "temperature": 0.0,
         }
@@ -46,6 +68,7 @@ class GeminiExtractionClient:
                 if attempt == retries - 1:
                     raise ValueError(f"{type(exc).__name__}: {exc}") from exc
 
-                time.sleep(3)
+                # Short sleep before retry — keeps total retry overhead low
+                time.sleep(1)
 
         return {}

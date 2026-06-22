@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 from pathlib import Path
@@ -55,6 +56,36 @@ async def _save_upload_to_temp_pdf(upload: UploadFile) -> str:
         return tmp.name
 
 
+async def _process_single_upload(
+    upload: UploadFile,
+    requested_attributes: list[str],
+) -> list[dict[str, str]]:
+    """Save one upload to a temp file, extract, then clean up."""
+    source_file = upload.filename or "uploaded.pdf"
+    temp_path = ""
+    try:
+        _validate_pdf_upload(upload)
+        temp_path = await _save_upload_to_temp_pdf(upload)
+        return await run_in_threadpool(
+            extraction_service.extract_file_records,
+            temp_path,
+            source_file,
+            requested_attributes,
+        )
+    except Exception as exc:
+        return [
+            {
+                "source_file": source_file,
+                **{attr: "Null" for attr in requested_attributes},
+                "status": "Failed",
+                "failure_reason": str(exc),
+            }
+        ]
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
 @app.post("/extract")
 async def extract(
     files: list[UploadFile] = File(...),
@@ -71,34 +102,15 @@ async def extract(
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least one PDF file.")
 
-    all_records: list[dict[str, str]] = []
+    # All files are saved and dispatched to the thread pool concurrently so
+    # N PDFs take ~the time of the slowest single file, not N × that time.
+    results: list[list[dict[str, str]]] = await asyncio.gather(
+        *[_process_single_upload(upload, requested_attributes) for upload in files]
+    )
 
-    for upload in files:
-        source_file = upload.filename or "uploaded.pdf"
-        temp_path = ""
-
-        try:
-            _validate_pdf_upload(upload)
-            temp_path = await _save_upload_to_temp_pdf(upload)
-            file_records = await run_in_threadpool(
-                extraction_service.extract_file_records,
-                temp_path,
-                source_file,
-                requested_attributes,
-            )
-            all_records.extend(file_records)
-        except Exception as exc:
-            all_records.append(
-                {
-                    "source_file": source_file,
-                    **{attribute: "Null" for attribute in requested_attributes},
-                    "status": "Failed",
-                    "failure_reason": str(exc),
-                }
-            )
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
+    all_records: list[dict[str, str]] = [
+        record for file_records in results for record in file_records
+    ]
 
     if output_format == "csv":
         csv_output = records_to_csv(all_records, requested_attributes)
