@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NHAI PDF Parser</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="workspace" aria-label="PDF extraction workspace">
+        <header class="header">
+          <div>
+            <p class="eyebrow">NHAI PDF Parser</p>
+            <h1>Extract structured data from PDFs</h1>
+          </div>
+          <div id="statusPill" class="status-pill" role="status" aria-live="polite">Ready</div>
+        </header>
+
+        <form id="extractForm" class="extract-form">
+          <div class="field-group">
+            <label for="files">PDF files</label>
+            <input id="files" name="files" type="file" accept="application/pdf,.pdf" multiple required>
+            <p class="hint">Upload one or more PDF notices.</p>
+          </div>
+
+          <div class="field-group">
+            <label for="attributes">Attributes</label>
+            <textarea id="attributes" name="attributes" required>name
+dob
+INFRACON_ID
+position
+project_name
+project_state
+debarment_order_date
+effective_from
+effective_upto</textarea>
+            <p class="hint">Enter one attribute per line, or separate them with commas.</p>
+          </div>
+
+          <fieldset class="field-group">
+            <legend>Output format</legend>
+            <div class="segmented-control">
+              <label>
+                <input type="radio" name="output_format" value="json" checked>
+                <span>JSON</span>
+              </label>
+              <label>
+                <input type="radio" name="output_format" value="csv">
+                <span>CSV</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="actions">
+            <button id="submitButton" type="submit">Extract data</button>
+            <a id="downloadLink" class="download-link" hidden>Download result</a>
+          </div>
+
+          <p id="message" class="message" aria-live="polite"></p>
+        </form>
+
+        <section class="result-panel" aria-label="Extraction result">
+          <div class="result-header">
+            <h2>Result</h2>
+            <button id="copyButton" type="button" disabled>Copy JSON</button>
+          </div>
+          <pre id="resultOutput">{}</pre>
+        </section>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', path='/app.js') }}"></script>
+  </body>
+</html>
