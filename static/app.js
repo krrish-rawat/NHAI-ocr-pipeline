@@ -9,6 +9,8 @@ const statusText        = statusPill.querySelector(".status-text");
 const copyButton        = document.querySelector("#copyButton");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const resultForm        = document.querySelector("#resultForm");
+const summaryPlaceholder = document.querySelector("#summaryPlaceholder");
+const summaryPanel      = document.querySelector("#summaryPanel");
 const prevRecord        = document.querySelector("#prevRecord");
 const nextRecord        = document.querySelector("#nextRecord");
 const recordCounter     = document.querySelector("#recordCounter");
@@ -22,6 +24,7 @@ const clearFilesBtn     = document.querySelector("#clearFilesBtn");
 // ─── State ───────────────────────────────────────────────────────────────────
 let allRecords   = [];
 let currentIndex = 0;
+let summaryRequestId = 0;
 
 // Tracks the current FileList-compatible array for submission
 let selectedFiles = [];
@@ -112,6 +115,7 @@ clearFilesBtn.addEventListener("click", () => {
   fileInput.value = "";
   selectedFiles   = [];
   applyFileSelection([]);
+  resetSummaryDashboard();
   setMessage("");
 });
 
@@ -256,6 +260,91 @@ function showResultPanel(records) {
   setStatus("ready", "System Operational");
 }
 
+function resetSummaryDashboard() {
+  summaryPanel.hidden = true;
+  summaryPanel.innerHTML = "";
+  summaryPlaceholder.hidden = false;
+  summaryPlaceholder.querySelector(".summary-empty-title").textContent = "No document summary yet";
+  summaryPlaceholder.querySelector(".summary-empty-sub").textContent = "A high-level PDF overview will appear after upload.";
+}
+
+function setSummaryLoading() {
+  summaryPanel.hidden = true;
+  summaryPanel.innerHTML = "";
+  summaryPlaceholder.hidden = false;
+  summaryPlaceholder.querySelector(".summary-empty-title").textContent = "Generating summary";
+  summaryPlaceholder.querySelector(".summary-empty-sub").textContent = "Preparing a concise document overview.";
+}
+
+function renderSummaryDashboard(summaries) {
+  summaryPanel.innerHTML = "";
+
+  summaries.forEach((summary) => {
+    const section = document.createElement("section");
+    section.className = "summary-document";
+
+    const title = document.createElement("h3");
+    title.className = "summary-document-title";
+    title.textContent = summary.source_file || "Uploaded PDF";
+    section.appendChild(title);
+
+    if (summary.error) {
+      const error = document.createElement("p");
+      error.className = "summary-error";
+      error.textContent = summary.error;
+      section.appendChild(error);
+    } else {
+      const list = document.createElement("ul");
+      list.className = "summary-list";
+      (summary.summary_points || []).forEach((point) => {
+        const item = document.createElement("li");
+        item.textContent = point;
+        list.appendChild(item);
+      });
+      section.appendChild(list);
+    }
+
+    summaryPanel.appendChild(section);
+  });
+
+  summaryPlaceholder.hidden = true;
+  summaryPanel.hidden = false;
+}
+
+async function summarizeSelectedFiles(requestId) {
+  setSummaryLoading();
+
+  const summaries = await Promise.all(selectedFiles.map(async (file) => {
+    const payload = new FormData();
+    payload.append("file", file);
+
+    try {
+      const response = await fetch("/summarize", { method: "POST", body: payload });
+      if (!response.ok) {
+        let detail = `Summary failed with status ${response.status}.`;
+        try {
+          const err = await response.json();
+          detail = err.detail || detail;
+        } catch {
+          detail = await response.text();
+        }
+        throw new Error(detail);
+      }
+      return await response.json();
+    } catch (error) {
+      return {
+        source_file: file.name,
+        summary_points: [],
+        error: error.message || "Summary generation failed.",
+      };
+    }
+  }));
+
+  if (requestId === summaryRequestId) {
+    renderSummaryDashboard(summaries);
+  }
+}
+
 // ─── Pagination ───────────────────────────────────────────────────────────────
 prevRecord.addEventListener("click", () => {
   if (currentIndex > 0) showRecord(currentIndex - 1);
@@ -283,6 +372,7 @@ extractForm.addEventListener("submit", async (event) => {
   copyButton.disabled      = true;
   resultForm.hidden        = true;
   resultPlaceholder.hidden = false;
+  resetSummaryDashboard();
 
   const formData   = new FormData(extractForm);
   const attributes = String(formData.get("attributes") || "").trim();
@@ -305,6 +395,8 @@ extractForm.addEventListener("submit", async (event) => {
 
   setBusy(true);
   setMessage("Processing uploaded PDFs. This may take a moment for scanned documents.");
+  summaryRequestId += 1;
+  summarizeSelectedFiles(summaryRequestId);
 
   try {
     const response = await fetch("/extract", { method: "POST", body: payload });

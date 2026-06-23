@@ -19,6 +19,7 @@ from src.services.extraction_service import (
 )
 from src.services.serializers import records_to_csv, records_to_json_payload
 from src.services.settings import settings
+from src.services.summary_service import build_summary_service
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -26,6 +27,7 @@ app = FastAPI(title="NHAI PDF Parser")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 extraction_service = build_extraction_service()
+summary_service = build_summary_service()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -86,6 +88,39 @@ async def _process_single_upload(
             os.unlink(temp_path)
 
 
+async def _summarize_single_upload(upload: UploadFile) -> dict[str, list[str] | str]:
+    source_file = upload.filename or "uploaded.pdf"
+    temp_path = ""
+    try:
+        _validate_pdf_upload(upload)
+        temp_path = await _save_upload_to_temp_pdf(upload)
+        result = await asyncio.wait_for(
+            run_in_threadpool(summary_service.summarize_file, temp_path),
+            timeout=settings.summary_timeout_seconds,
+        )
+        return {
+            "source_file": source_file,
+            **result,
+        }
+    except asyncio.TimeoutError:
+        return {
+            "source_file": source_file,
+            "summary_points": [],
+            "error": "Summary generation timed out. Try a smaller PDF or retry.",
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return {
+            "source_file": source_file,
+            "summary_points": [],
+            "error": str(exc),
+        }
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
 @app.post("/extract")
 async def extract(
     files: list[UploadFile] = File(...),
@@ -124,3 +159,8 @@ async def extract(
         content=records_to_json_payload(all_records, requested_attributes),
         media_type="application/json",
     )
+
+
+@app.post("/summarize")
+async def summarize(file: UploadFile = File(...)):
+    return await _summarize_single_upload(file)

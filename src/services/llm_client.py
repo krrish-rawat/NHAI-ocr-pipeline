@@ -72,3 +72,31 @@ class GeminiExtractionClient:
                 time.sleep(1)
 
         return {}
+
+    def generate_text(
+        self,
+        prompt: str,
+        images: list[Image.Image],
+        retries: int = settings.extraction_retries,
+    ) -> str:
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not configured.")
+
+        model = genai.GenerativeModel(self.model_name)
+
+        for attempt in range(retries):
+            try:
+                response = model.generate_content(
+                    [prompt, *images],
+                    generation_config=GenerationConfig(
+                        temperature=0.0,
+                    ),
+                )
+                return (response.text or "").strip()
+            except Exception as exc:
+                if attempt == retries - 1:
+                    raise ValueError(f"{type(exc).__name__}: {exc}") from exc
+
+                time.sleep(1)
+
+        return ""
