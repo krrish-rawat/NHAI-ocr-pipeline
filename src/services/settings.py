@@ -13,6 +13,7 @@ class AppSettings:
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     max_upload_bytes: int = int(os.getenv("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
     extraction_retries: int = int(os.getenv("EXTRACTION_RETRIES", "2"))
+    summary_timeout_seconds: int = int(os.getenv("SUMMARY_TIMEOUT_SECONDS", "60"))
 
 
 settings = AppSettings()
