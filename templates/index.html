@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='/nhai-logo.jpg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', path='/nhai-logo.jpg') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
   </head>
   <body>
@@ -15,48 +17,21 @@
     <!-- Skip to main content (accessibility) -->
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
-    <!-- [A] Saffron top strip -->
-    <div class="top-strip" aria-hidden="true"></div>
-
-    <!-- [B] Government identity bar -->
-    <div class="gov-identity-bar" role="banner">
-      <div class="gov-identity-inner">
-        <div class="gov-identity-left">
-          <!-- Simplified Ashoka Emblem SVG -->
-          <svg class="ashoka-emblem" viewBox="0 0 40 54" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Ashoka Emblem" role="img">
-            <rect x="4" y="46" width="32" height="5" fill="#003580"/>
-            <circle cx="20" cy="22" r="10" stroke="#003580" stroke-width="1.5" fill="none"/>
-            <circle cx="20" cy="22" r="2" fill="#003580"/>
-            <line x1="20" y1="12" x2="20" y2="32" stroke="#003580" stroke-width="0.8"/>
-            <line x1="10" y1="22" x2="30" y2="22" stroke="#003580" stroke-width="0.8"/>
-            <line x1="12.9" y1="14.9" x2="27.1" y2="29.1" stroke="#003580" stroke-width="0.8"/>
-            <line x1="27.1" y1="14.9" x2="12.9" y2="29.1" stroke="#003580" stroke-width="0.8"/>
-            <line x1="15" y1="12.7" x2="25" y2="31.3" stroke="#003580" stroke-width="0.5"/>
-            <line x1="25" y1="12.7" x2="15" y2="31.3" stroke="#003580" stroke-width="0.5"/>
-            <line x1="11.5" y1="17" x2="28.5" y2="27" stroke="#003580" stroke-width="0.5"/>
-            <line x1="11.5" y1="27" x2="28.5" y2="17" stroke="#003580" stroke-width="0.5"/>
-            <rect x="7"  y="36" width="7"  height="10" fill="#003580"/>
-            <rect x="16" y="34" width="8"  height="12" fill="#003580"/>
-            <rect x="26" y="36" width="7"  height="10" fill="#003580"/>
-            <circle cx="10.5" cy="35" r="3"   fill="#003580"/>
-            <circle cx="20"   cy="33" r="3.2" fill="#003580"/>
-            <circle cx="29.5" cy="35" r="3"   fill="#003580"/>
-          </svg>
-          <div class="gov-identity-text">
-            <span class="gov-ministry-line1">भारत सरकार / Government of India</span>
-            <span class="gov-ministry-line2">Ministry of Road Transport &amp; Highways</span>
-          </div>
-        </div>
-        <div class="gov-identity-right">
-          <span class="nhai-logo-title">NHAI</span>
-          <span class="nhai-logo-subtitle">National Highways Authority of India</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- [C] Navigation bar -->
     <nav class="gov-nav" aria-label="Primary navigation">
       <div class="gov-nav-inner">
+        <a href="#" class="gov-brand" aria-label="NHAI home">
+          <img class="gov-brand-logo" src="{{ url_for('static', path='/nhai-logo.jpg') }}" alt="NHAI logo">
+          <span class="gov-brand-text">
+            <span class="gov-brand-title">NHAI</span>
+            <span class="gov-brand-subtitle">Ministry of Road Transport &amp; Highways</span>
+          </span>
+        </a>
+        <input id="navToggle" class="nav-toggle" type="checkbox" aria-label="Toggle navigation menu">
+        <label for="navToggle" class="nav-toggle-label" aria-label="Toggle navigation menu">
+          <span></span>
+          <span></span>
+          <span></span>
+        </label>
         <ul class="gov-nav-list" role="list">
           <li><a href="#" class="gov-nav-link">Home</a></li>
           <li><a href="#" class="gov-nav-link">About</a></li>
@@ -64,19 +39,20 @@
           <li><a href="#" class="gov-nav-link">Help</a></li>
           <li><a href="#" class="gov-nav-link">Contact</a></li>
         </ul>
+        <div class="gov-nav-actions">
+          <div id="statusPill" class="status-pill status-ready" role="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span class="status-text">Operational</span>
+          </div>
+          <button type="button" class="nav-icon-btn" aria-label="Settings">⚙️</button>
+          <button type="button" class="nav-icon-btn" aria-label="Profile">👤</button>
+        </div>
       </div>
     </nav>
 
-    <!-- Title band only — breadcrumb removed -->
-
-    <!-- Title band — NO h1, subtitle only -->
     <div class="page-title-band">
       <div class="content-width page-title-inner">
         <p class="page-subtitle">Upload debarment order PDFs to extract and export structured contractor data.</p>
-        <div id="statusPill" class="status-pill status-ready" role="status" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span class="status-text">System Operational</span>
-        </div>
       </div>
     </div>
 
@@ -104,13 +80,13 @@
                 <svg class="dropzone-icon" viewBox="0 0 48 48" fill="none"
                      xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                   <rect x="8" y="6" width="24" height="32"
-                        stroke="#003580" stroke-width="2" fill="#F0F4FF"/>
-                  <path d="M28 6v10h10" stroke="#003580" stroke-width="2" fill="none"/>
-                  <line x1="34" y1="30" x2="34" y2="44" stroke="#F15A22" stroke-width="2"/>
-                  <polyline points="29,35 34,30 39,35" stroke="#F15A22" stroke-width="2" fill="none"/>
-                  <line x1="14" y1="24" x2="26" y2="24" stroke="#003580" stroke-width="1.5"/>
-                  <line x1="14" y1="29" x2="26" y2="29" stroke="#003580" stroke-width="1.5"/>
-                  <line x1="14" y1="34" x2="22" y2="34" stroke="#003580" stroke-width="1.5"/>
+                        stroke="#003B7A" stroke-width="2" fill="#F0F9FF"/>
+                  <path d="M28 6v10h10" stroke="#003B7A" stroke-width="2" fill="none"/>
+                  <line x1="34" y1="30" x2="34" y2="44" stroke="#FF9500" stroke-width="2"/>
+                  <polyline points="29,35 34,30 39,35" stroke="#FF9500" stroke-width="2" fill="none"/>
+                  <line x1="14" y1="24" x2="26" y2="24" stroke="#003B7A" stroke-width="1.5"/>
+                  <line x1="14" y1="29" x2="26" y2="29" stroke="#003B7A" stroke-width="1.5"/>
+                  <line x1="14" y1="34" x2="22" y2="34" stroke="#003B7A" stroke-width="1.5"/>
                 </svg>
                 <p class="dropzone-primary">Click to select or drag &amp; drop PDF files</p>
                 <p class="dropzone-secondary">Supported format: PDF &nbsp;|&nbsp; Max size: 25 MB per file</p>
@@ -122,8 +98,8 @@
                   <!-- Checkmark icon -->
                   <svg class="file-success-icon" viewBox="0 0 20 20" fill="none"
                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <circle cx="10" cy="10" r="9" stroke="#1A7A4A" stroke-width="1.5" fill="#E8F5EE"/>
-                    <polyline points="5.5,10.5 8.5,13.5 14.5,7" stroke="#1A7A4A"
+                    <circle cx="10" cy="10" r="9" stroke="#10B981" stroke-width="1.5" fill="#ECFDF5"/>
+                    <polyline points="5.5,10.5 8.5,13.5 14.5,7" stroke="#10B981"
                               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
                   </svg>
                   <span class="file-success-label" id="fileSuccessLabel">1 file ready</span>
