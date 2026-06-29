@@ -7,7 +7,7 @@
     <meta name="description" content="Official NHAI utility to extract structured contractor data from debarment order PDFs. Upload PDF notices and export data in JSON or CSV format.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Serif:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
   </head>
   <body>
@@ -72,7 +72,7 @@
     <!-- Title band — NO h1, subtitle only -->
     <div class="page-title-band">
       <div class="content-width page-title-inner">
-        <p class="page-subtitle">Upload NHAI debarment order PDFs to extract and export structured contractor data.</p>
+        <p class="page-subtitle">Upload debarment order PDFs to extract and export structured contractor data.</p>
         <div id="statusPill" class="status-pill status-ready" role="status" aria-live="polite">
           <span class="status-dot" aria-hidden="true"></span>
           <span class="status-text">System Operational</span>
@@ -136,7 +136,7 @@
 
             <!-- Attributes — empty textarea with placeholder only -->
             <div class="field-block">
-              <label class="field-label" for="attributes">Data Fields to Extract</label>
+              <label class="field-label" for="attributes">Which fields should we extract?</label>
               <textarea id="attributes" name="attributes" required
                         class="gov-textarea"
                         aria-describedby="attributes-hint"
@@ -156,6 +156,18 @@
               </button>
             </div>
 
+            <!-- Processing progress bar (shown during extraction) -->
+            <div id="progressContainer" class="progress-container" hidden aria-live="polite" aria-label="Extraction progress">
+              <div class="progress-bar-wrapper">
+                <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBarTrack">
+                  <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <span class="progress-percentage" id="progressPct">0%</span>
+              </div>
+              <p class="progress-status" id="progressStatus">Reading PDF document...</p>
+              <p class="progress-timer" id="progressTimer"></p>
+            </div>
+
             <p id="message" class="field-message" aria-live="assertive" role="alert"></p>
           </form>
         </div>
@@ -163,37 +175,10 @@
 
       <!-- RIGHT CARD -->
       <section class="gov-card" aria-labelledby="results-card-heading">
-        <div class="gov-card-header gov-card-header--results">
-          <h2 id="results-card-heading" class="gov-card-title">Extraction Results</h2>
-          <div class="result-header-actions">
-            <button id="copyButton" type="button" class="btn-outline-white"
-                    disabled aria-label="Copy JSON to clipboard">Copy JSON</button>
-            <button id="prevRecord" type="button" class="btn-outline-white nav-btn"
-                    hidden aria-label="Previous record">&#8592;</button>
-            <span id="recordCounter" class="record-counter" hidden aria-live="polite"></span>
-            <button id="nextRecord" type="button" class="btn-outline-white nav-btn"
-                    hidden aria-label="Next record">&#8594;</button>
-          </div>
+        <div class="gov-card-header">
+          <h2 id="results-card-heading" class="gov-card-title">Extracted Debarment Record</h2>
         </div>
         <div class="gov-card-body gov-card-body--results">
-
-          <!-- Empty state -->
-          <div id="resultPlaceholder" class="result-empty-state" aria-label="No results yet">
-            <svg class="empty-icon" viewBox="0 0 64 64" fill="none"
-                 xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="10" y="4" width="32" height="44"
-                    stroke="#CCCCCC" stroke-width="2" fill="#F5F5F5"/>
-              <path d="M38 4v12h12" stroke="#CCCCCC" stroke-width="2" fill="none"/>
-              <line x1="18" y1="22" x2="34" y2="22" stroke="#CCCCCC" stroke-width="1.5"/>
-              <line x1="18" y1="29" x2="34" y2="29" stroke="#CCCCCC" stroke-width="1.5"/>
-              <line x1="18" y1="36" x2="28" y2="36" stroke="#CCCCCC" stroke-width="1.5"/>
-              <circle cx="48" cy="48" r="12" stroke="#CCCCCC" stroke-width="2" fill="#F5F5F5"/>
-              <line x1="44" y1="48" x2="52" y2="48" stroke="#CCCCCC" stroke-width="2"/>
-              <line x1="48" y1="44" x2="48" y2="52" stroke="#CCCCCC" stroke-width="2"/>
-            </svg>
-            <p class="empty-title">No extraction results yet</p>
-            <p class="empty-sub">Upload and process a PDF to view structured data here.</p>
-          </div>
 
           <!-- Result form populated after extraction -->
           <form id="resultForm" class="result-form" hidden novalidate
@@ -258,6 +243,34 @@
       </div>
     </footer>
 
+    <!-- PDF Citation Modal -->
+    <div id="pdfModal" class="pdf-modal-overlay" hidden aria-modal="true" role="dialog" aria-label="PDF Source Viewer">
+      <div class="pdf-modal">
+        <div class="pdf-modal-header">
+          <span class="pdf-modal-title" id="pdfModalTitle">Source Document</span>
+          <div class="pdf-modal-meta">
+            <span id="pdfPageInfo" class="pdf-page-info"></span>
+          </div>
+          <button id="pdfModalClose" class="pdf-modal-close" aria-label="Close PDF viewer">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="16" y1="2" x2="2" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="pdf-modal-body">
+          <div id="pdfViewerWrap" class="pdf-viewer-wrap">
+            <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
+            <div id="pdfHighlight" class="pdf-highlight" hidden></div>
+            <div id="pdfTooltip" class="source-tooltip" hidden>Source location</div>
+          </div>
+          <p id="pdfErrorMsg" class="pdf-error-msg" hidden></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF.js from CDN (pinned minor version) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq7pCiRCRwKSbI6OIG9Z7g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="{{ url_for('static', path='/app.js') }}"></script>
   </body>
 </html>
