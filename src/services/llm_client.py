@@ -12,15 +12,31 @@ from src.services.settings import settings
 
 def build_response_schema(attributes: list[str]) -> type[BaseModel]:
     """
-    Dynamically build a Pydantic model matching the user's requested attributes.
-    Passing this to Gemini as response_schema enables constrained decoding.
-    Note: Gemini's schema serializer does not support Field(default=...), so
-    fields are declared as plain (str, ...) — required strings.
+    Dynamically build a Pydantic model matching the user's requested attributes
+    plus per-field source citations.
     """
+    class SourceCitation(BaseModel):
+        pageNumber: int = Field(description="1-based PDF page number where the value appears.")
+        text: str = Field(description="Short exact source snippet from the PDF for this value.")
+        confidence: str = Field(description="Extraction confidence: high, medium, low, or unknown.")
+
+    source_fields: dict[str, Any] = {
+        attr: (
+            SourceCitation,
+            Field(description=f"Source citation for {attr}. Use pageNumber 0, text 'Null', and confidence 'unknown' if not found."),
+        )
+        for attr in attributes
+    }
+    SourceMetaModel = create_model("ExtractionSourceMeta", **source_fields)
+
     record_fields: dict[str, Any] = {
         attr: (str, Field(description=f"Extracted value for {attr}. Use 'Null' if not found."))
         for attr in attributes
     }
+    record_fields["source_meta"] = (
+        SourceMetaModel,
+        Field(description="Per-field source citations keyed by requested attribute name."),
+    )
     RecordModel = create_model("ExtractionRecord", **record_fields)
 
     class ExtractionResponse(BaseModel):

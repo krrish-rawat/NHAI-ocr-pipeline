@@ -240,13 +240,38 @@
             <div id="pdfHighlight" class="pdf-highlight" hidden></div>
             <div id="pdfTooltip" class="source-tooltip" hidden>Source location</div>
           </div>
-          <p id="pdfErrorMsg" class="pdf-error-msg" hidden></p>
+          <section id="pdfFallbackContent" class="pdf-fallback-content" hidden aria-live="polite">
+            <p id="pdfErrorMsg" class="pdf-error-msg"></p>
+            <dl class="source-fallback-details">
+              <div>
+                <dt>Source label</dt>
+                <dd id="pdfFallbackLabel">Source field</dd>
+              </div>
+              <div>
+                <dt>Extracted value</dt>
+                <dd id="pdfFallbackValue" class="source-value-highlight">Null</dd>
+              </div>
+              <div>
+                <dt>Page number</dt>
+                <dd id="pdfFallbackPage">Unavailable</dd>
+              </div>
+            </dl>
+            <p class="source-fallback-note">Source data extracted from PDF. Click 'Try Again' to reload.</p>
+            <div class="pdf-fallback-actions">
+              <button type="button" id="pdfTryAgainBtn" class="pdf-fallback-btn pdf-fallback-btn--primary">🔄 Try Again</button>
+              <button type="button" id="pdfDownloadBtn" class="pdf-fallback-btn">Download PDF</button>
+              <button type="button" id="pdfFallbackCloseBtn" class="pdf-fallback-btn">Close</button>
+            </div>
+          </section>
         </div>
       </div>
     </div>
 
-    <!-- PDF.js from CDN (pinned minor version) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" integrity="sha512-q+4liFwdPC/bNdhUpZx6aXDx/h77yEQtn4I1slHydcbZK34nLaR3cAeYSJshoxIOq7pCiRCRwKSbI6OIG9Z7g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      window.pdfjsWorker = window.pdfjsWorker || {};
+      window.pdfjsWorker.WorkerMessageHandler = window.pdfjsWorker.WorkerMessageHandler || null;
+    </script>
     <script src="{{ url_for('static', path='/app.js') }}"></script>
   </body>
 </html>

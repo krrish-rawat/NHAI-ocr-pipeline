@@ -1052,21 +1052,22 @@ h1, h2, h3 { margin: 0; }
   justify-content: center;
   width: 36px;
   background: none;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-sm);
-  font-size: 15px;
+  font-size: 16px;
   cursor: pointer;
-  color: var(--text-secondary);
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, color 0.2s ease;
+  color: var(--saffron);
+  opacity: 0.7;
+  transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease, opacity 0.2s ease;
   padding: 0;
   line-height: 1;
 }
 
 .citation-link:hover {
   background: rgba(255, 149, 0, 0.12);
-  border-color: var(--saffron);
   color: var(--saffron);
-  transform: scale(1.08);
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .citation-link:active { transform: scale(0.94); }
@@ -1079,7 +1080,7 @@ h1, h2, h3 { margin: 0; }
 
 /* No source available state — button still shows but with reduced opacity */
 .citation-link[data-no-source] {
-  opacity: 0.5;
+  opacity: 0.7;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1095,7 +1096,7 @@ h1, h2, h3 { margin: 0; }
   align-items: center;
   justify-content: center;
   padding: var(--sp-lg);
-  animation: overlayFadeIn 0.25s ease;
+  animation: overlayFadeIn 0.3s ease;
 }
 
 .pdf-modal-overlay[hidden] { display: none; }
@@ -1114,7 +1115,7 @@ h1, h2, h3 { margin: 0; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modalSlideIn 0.25s ease;
+  animation: modalSlideIn 0.3s ease;
 }
 
 @keyframes modalSlideIn {
@@ -1161,9 +1162,12 @@ h1, h2, h3 { margin: 0; }
   color: #fff;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s ease;
+  transition: background 0.2s ease, color 0.2s ease;
 }
-.pdf-modal-close:hover { background: rgba(255,255,255,0.22); }
+.pdf-modal-close:hover {
+  background: rgba(255,149,0,0.18);
+  color: var(--saffron);
+}
 .pdf-modal-close:focus-visible { outline: 2px solid var(--saffron); outline-offset: 2px; }
 
 .pdf-modal-body {
@@ -1247,12 +1251,101 @@ h1, h2, h3 { margin: 0; }
   color: var(--danger);
   font-size: 14px;
   font-weight: 500;
-  text-align: center;
-  padding: var(--sp-lg);
+  padding: 14px var(--sp-md);
   margin: 0;
   background: var(--danger-bg);
+  border-left: 4px solid var(--danger);
   border-radius: var(--radius-sm);
   width: 100%;
+}
+
+.pdf-fallback-content {
+  width: min(100%, 620px);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: var(--sp-lg);
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: var(--sp-md);
+}
+
+.pdf-fallback-content[hidden] {
+  display: none;
+}
+
+.source-fallback-details {
+  display: grid;
+  gap: var(--sp-md);
+  margin: 0;
+}
+
+.source-fallback-details div {
+  display: grid;
+  gap: var(--sp-xs);
+}
+
+.source-fallback-details dt {
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.source-fallback-details dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.source-value-highlight {
+  background: #FFF3E0;
+  border-left: 4px solid var(--saffron);
+  border-radius: var(--radius-sm);
+  padding: 14px var(--sp-md);
+  font-weight: 600;
+}
+
+.source-fallback-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.pdf-fallback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-sm);
+}
+
+.pdf-fallback-btn {
+  background: var(--surface);
+  color: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px var(--sp-md);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.pdf-fallback-btn:hover {
+  background: var(--hover-light);
+  border-color: var(--navy);
+}
+
+.pdf-fallback-btn--primary {
+  background: var(--saffron);
+  border-color: var(--saffron);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(255, 149, 0, 0.20);
+}
+
+.pdf-fallback-btn--primary:hover {
+  background: var(--saffron-dark);
+  border-color: var(--saffron-dark);
+  transform: translateY(-2px);
 }
 
 /* Mobile: full-screen modal */

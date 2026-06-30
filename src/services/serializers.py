@@ -3,7 +3,7 @@ import io
 import json
 
 
-def records_to_csv(records: list[dict[str, str]], attributes: list[str]) -> str:
+def records_to_csv(records: list[dict[str, object]], attributes: list[str]) -> str:
     fieldnames = ["source_file", *attributes, "status", "failure_reason"]
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
@@ -16,7 +16,7 @@ def records_to_csv(records: list[dict[str, str]], attributes: list[str]) -> str:
     return buffer.getvalue()
 
 
-def records_to_json_payload(records: list[dict[str, str]], attributes: list[str]) -> str:
+def records_to_json_payload(records: list[dict[str, object]], attributes: list[str]) -> str:
     return json.dumps(
         {
             "attributes": attributes,

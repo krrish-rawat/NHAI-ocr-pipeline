@@ -61,7 +61,7 @@ async def _save_upload_to_temp_pdf(upload: UploadFile) -> str:
 async def _process_single_upload(
     upload: UploadFile,
     requested_attributes: list[str],
-) -> list[dict[str, str]]:
+) -> list[dict[str, object]]:
     """Save one upload to a temp file, extract, then clean up."""
     source_file = upload.filename or "uploaded.pdf"
     temp_path = ""
@@ -79,6 +79,10 @@ async def _process_single_upload(
             {
                 "source_file": source_file,
                 **{attr: "Null" for attr in requested_attributes},
+                "source_meta": {
+                    attr: {"pageNumber": 0, "text": "Null", "confidence": "unknown"}
+                    for attr in requested_attributes
+                },
                 "status": "Failed",
                 "failure_reason": str(exc),
             }
@@ -139,11 +143,11 @@ async def extract(
 
     # All files are saved and dispatched to the thread pool concurrently so
     # N PDFs take ~the time of the slowest single file, not N × that time.
-    results: list[list[dict[str, str]]] = await asyncio.gather(
+    results: list[list[dict[str, object]]] = await asyncio.gather(
         *[_process_single_upload(upload, requested_attributes) for upload in files]
     )
 
-    all_records: list[dict[str, str]] = [
+    all_records: list[dict[str, object]] = [
         record for file_records in results for record in file_records
     ]
 

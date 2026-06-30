@@ -34,6 +34,13 @@ const pdfViewerWrap  = document.querySelector("#pdfViewerWrap");
 const pdfHighlight   = document.querySelector("#pdfHighlight");
 const pdfTooltip     = document.querySelector("#pdfTooltip");
 const pdfErrorMsg    = document.querySelector("#pdfErrorMsg");
+const pdfFallbackContent = document.querySelector("#pdfFallbackContent");
+const pdfFallbackLabel   = document.querySelector("#pdfFallbackLabel");
+const pdfFallbackValue   = document.querySelector("#pdfFallbackValue");
+const pdfFallbackPage    = document.querySelector("#pdfFallbackPage");
+const pdfTryAgainBtn     = document.querySelector("#pdfTryAgainBtn");
+const pdfDownloadBtn     = document.querySelector("#pdfDownloadBtn");
+const pdfFallbackCloseBtn = document.querySelector("#pdfFallbackCloseBtn");
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let allRecords   = [];
@@ -172,6 +179,8 @@ const PdfModal = (() => {
   let _pdfDoc      = null;
   let _fileUrl     = null;
   let _tooltipTimer = null;
+  let _lastSourceData = null;
+  let _lastFieldName = "";
 
   // Configure PDF.js worker (uses same CDN version)
   if (typeof pdfjsLib !== "undefined") {
@@ -184,9 +193,41 @@ const PdfModal = (() => {
 
   function _cleanup() {
     clearTimeout(_tooltipTimer);
-    pdfHighlight.hidden = true;
+    _clearHighlights();
     pdfTooltip.hidden   = true;
-    pdfErrorMsg.hidden  = true;
+    pdfFallbackContent.hidden = true;
+    pdfViewerWrap.hidden = false;
+    pdfCanvas.hidden = false;
+    pdfPageInfo.textContent = "";
+    pdfCanvas.getContext("2d")?.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+  }
+
+  function _clearHighlights() {
+    pdfHighlight.hidden = true;
+    pdfViewerWrap.querySelectorAll(".pdf-highlight-box").forEach((el) => el.remove());
+  }
+
+  function _formatFieldName(fieldName) {
+    return fieldName ? fieldName.replace(/_/g, " ") : "Source field";
+  }
+
+  function _sourcePageLabel(sourceData) {
+    const pageNumber = Number(sourceData?.pageNumber || 0);
+    return pageNumber > 0 ? `Page ${pageNumber}` : "Unavailable";
+  }
+
+  function _showFallback(message, sourceData, fieldName) {
+    pdfViewerWrap.hidden = true;
+    pdfCanvas.hidden = true;
+    pdfHighlight.hidden = true;
+    pdfTooltip.hidden = true;
+
+    pdfErrorMsg.textContent = `${message} PDF viewer unavailable. Source information:`;
+    pdfFallbackLabel.textContent = _formatFieldName(fieldName);
+    pdfFallbackValue.textContent = sourceData?.text || sourceData?.value || "Null";
+    pdfFallbackPage.textContent = _sourcePageLabel(sourceData);
+    pdfFallbackContent.hidden = false;
+    pdfPageInfo.textContent = _sourcePageLabel(sourceData);
   }
 
   async function _renderPage(pageNum) {
@@ -203,23 +244,143 @@ const PdfModal = (() => {
       pdfCanvas.height = viewport.height;
       await page.render({ canvasContext: ctx, viewport }).promise;
       pdfPageInfo.textContent = `Page ${pageNum} of ${_pdfDoc.numPages}`;
-      return viewport;   // caller uses this to place the highlight
+      return { page, viewport };
     } catch {
-      _showError("Unable to render this page.");
+      _showFallback("Unable to render this page.", _lastSourceData, _lastFieldName);
       return null;
     }
+  }
+
+  function _normalizeSnippet(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function _itemBox(item, viewport) {
+    const transform = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const height = Math.max(Math.abs(transform[3]), item.height * viewport.scale, 8);
+    const width = Math.max(item.width * viewport.scale, 8);
+    return {
+      left: transform[4],
+      top: transform[5] - height,
+      width,
+      height,
+      centerY: transform[5] - height / 2,
+    };
+  }
+
+  function _findSnippetItemRange(items, snippet) {
+    const target = _normalizeSnippet(snippet);
+    if (!target || target === "null") return null;
+
+    for (let start = 0; start < items.length; start += 1) {
+      let combined = "";
+      for (let end = start; end < items.length; end += 1) {
+        combined = `${combined} ${items[end].str || ""}`;
+        const normalized = _normalizeSnippet(combined);
+        if (normalized.includes(target) || target.includes(normalized)) {
+          return { start, end };
+        }
+        if (normalized.length > target.length + 120) break;
+      }
+    }
+
+    const targetWords = target.split(" ").filter(Boolean);
+    if (!targetWords.length) return null;
+
+    let best = null;
+    for (let start = 0; start < items.length; start += 1) {
+      let combined = "";
+      for (let end = start; end < Math.min(items.length, start + 12); end += 1) {
+        combined = `${combined} ${items[end].str || ""}`;
+        const normalized = _normalizeSnippet(combined);
+        const matchedWords = targetWords.filter((word) => normalized.includes(word)).length;
+        const score = matchedWords / targetWords.length;
+        if (!best || score > best.score) best = { start, end, score };
+      }
+    }
+
+    return best?.score >= 0.6 ? best : null;
+  }
+
+  function _groupBoxesByLine(boxes) {
+    const lines = [];
+    boxes.forEach((box) => {
+      const line = lines.find((candidate) => Math.abs(candidate.centerY - box.centerY) < 8);
+      if (line) {
+        line.boxes.push(box);
+        line.centerY = (line.centerY + box.centerY) / 2;
+      } else {
+        lines.push({ centerY: box.centerY, boxes: [box] });
+      }
+    });
+    return lines;
+  }
+
+  function _drawHighlightBoxes(boxes, label) {
+    _clearHighlights();
+    const lines = _groupBoxesByLine(boxes);
+    lines.forEach((line) => {
+      const left = Math.min(...line.boxes.map((box) => box.left));
+      const top = Math.min(...line.boxes.map((box) => box.top));
+      const right = Math.max(...line.boxes.map((box) => box.left + box.width));
+      const bottom = Math.max(...line.boxes.map((box) => box.top + box.height));
+      const highlight = document.createElement("div");
+      highlight.className = "pdf-highlight pdf-highlight-box";
+      highlight.style.left = `${Math.max(left - 2, 0)}px`;
+      highlight.style.top = `${Math.max(top - 2, 0)}px`;
+      highlight.style.width = `${right - left + 4}px`;
+      highlight.style.height = `${bottom - top + 4}px`;
+      pdfViewerWrap.appendChild(highlight);
+    });
+
+    const first = pdfViewerWrap.querySelector(".pdf-highlight-box");
+    if (!first) return false;
+
+    pdfTooltip.textContent = label || "Source text highlighted";
+    pdfTooltip.style.left = `${first.offsetLeft + first.offsetWidth / 2}px`;
+    pdfTooltip.style.top = `${Math.max(first.offsetTop - 36, 4)}px`;
+    pdfTooltip.style.transform = "translateX(-50%)";
+    pdfTooltip.hidden = false;
+    clearTimeout(_tooltipTimer);
+    _tooltipTimer = setTimeout(() => { pdfTooltip.hidden = true; }, 5000);
+
+    setTimeout(() => {
+      first.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    return true;
+  }
+
+  async function _highlightSnippet(page, viewport, sourceData) {
+    const snippet = sourceData?.text || sourceData?.value || "";
+    if (!snippet || snippet === "Null") return false;
+
+    const textContent = await page.getTextContent();
+    const items = textContent.items.filter((item) => String(item.str || "").trim());
+    const range = _findSnippetItemRange(items, snippet);
+    if (!range) return false;
+
+    const boxes = items
+      .slice(range.start, range.end + 1)
+      .map((item) => _itemBox(item, viewport));
+
+    return _drawHighlightBoxes(boxes, "Source text highlighted");
   }
 
   function _placeHighlight(bbox, renderedViewport) {
     if (!bbox || !renderedViewport) return;
 
+    const viewport = renderedViewport.viewport || renderedViewport;
     // renderedViewport is the viewport used when the canvas was rendered.
     // bbox coordinates are in PDF user-space (scale=1).
     // Convert using the rendered viewport's scale.
-    const scale = renderedViewport.scale;
+    const scale = viewport.scale;
     const left  = bbox.x * scale;
     // PDF y=0 is bottom-left; canvas y=0 is top-left — flip the y axis.
-    const top   = (renderedViewport.height / scale - bbox.y - bbox.height) * scale;
+    const top   = (viewport.height / scale - bbox.y - bbox.height) * scale;
     const w     = bbox.width  * scale;
     const h     = bbox.height * scale;
 
@@ -244,12 +405,6 @@ const PdfModal = (() => {
     }, 150);
   }
 
-  function _showError(msg) {
-    pdfErrorMsg.textContent = msg;
-    pdfErrorMsg.hidden = false;
-    pdfCanvas.hidden   = true;
-  }
-
   // Public: open modal for a given file blob URL + source metadata
   async function open(fileUrl, sourceData, fieldName) {
     _cleanup();
@@ -257,21 +412,25 @@ const PdfModal = (() => {
     pdfModalTitle.textContent = fieldName ? `Source — ${fieldName.replace(/_/g, " ")}` : "Source Document";
     pdfPageInfo.textContent   = "";
     _fileUrl = fileUrl;
+    _lastSourceData = sourceData;
+    _lastFieldName = fieldName;
     _show();
 
     if (typeof pdfjsLib === "undefined") {
-      _showError("PDF viewer could not be loaded. Check your internet connection.");
+      _showFallback("", sourceData, fieldName);
       return;
     }
 
     try {
+      pdfViewerWrap.hidden = false;
+      pdfFallbackContent.hidden = true;
       _pdfDoc = await pdfjsLib.getDocument(fileUrl).promise;
       const pageNum = (sourceData?.pageNumber) || 1;
       const clampedPage = (pageNum >= 1 && pageNum <= _pdfDoc.numPages) ? pageNum : 1;
 
       if (clampedPage !== pageNum) {
-        const renderedVp = await _renderPage(1);
-        _showError(`Page ${pageNum} is out of range. Showing page 1.`);
+        await _renderPage(1);
+        _showFallback(`Page ${pageNum} is out of range.`, sourceData, fieldName);
         return;
       }
 
@@ -279,24 +438,41 @@ const PdfModal = (() => {
 
       if (sourceData?.boundingBox && renderedVp) {
         _placeHighlight(sourceData.boundingBox, renderedVp);
+        pdfPageInfo.textContent = `Page ${clampedPage} — "${sourceData?.text || sourceData?.value || "source"}" highlighted below`;
+      } else if (renderedVp && await _highlightSnippet(renderedVp.page, renderedVp.viewport, sourceData)) {
+        const confidence = sourceData?.confidence && sourceData.confidence !== "unknown"
+          ? ` (${sourceData.confidence} confidence)`
+          : "";
+        pdfPageInfo.textContent = `Page ${clampedPage} — "${sourceData?.text || sourceData?.value}" highlighted below${confidence}`;
       } else {
-        // No bounding box — show a generic tooltip so the user knows
-        // the PDF opened but precise highlighting isn't available.
-        pdfTooltip.textContent     = "Source location unavailable — showing full page";
+        pdfTooltip.textContent     = "Source text not found on rendered page";
         pdfTooltip.style.left      = "50%";
         pdfTooltip.style.top       = "8px";
         pdfTooltip.style.transform = "translateX(-50%)";
         pdfTooltip.hidden = false;
         clearTimeout(_tooltipTimer);
-        _tooltipTimer = setTimeout(() => { pdfTooltip.hidden = true; }, 4000);
+        _tooltipTimer = setTimeout(() => { pdfTooltip.hidden = true; }, 5000);
       }
     } catch (err) {
-      _showError("Unable to load PDF. The file may have been cleared from memory.");
+      _showFallback("", sourceData, fieldName);
     }
   }
 
+  pdfTryAgainBtn.addEventListener("click", () => {
+    if (_fileUrl) open(_fileUrl, _lastSourceData, _lastFieldName);
+  });
+
+  pdfDownloadBtn.addEventListener("click", () => {
+    if (!_fileUrl) return;
+    const link = document.createElement("a");
+    link.href = _fileUrl;
+    link.download = "source.pdf";
+    link.click();
+  });
+
   // Close handlers
   pdfModalClose.addEventListener("click", _hide);
+  pdfFallbackCloseBtn.addEventListener("click", _hide);
   pdfModal.addEventListener("click", (e) => { if (e.target === pdfModal) _hide(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pdfModal.hidden) _hide(); });
 
@@ -495,8 +671,9 @@ function createAutocompleteField(name, suggestion, group, source) {
   const citBtn = document.createElement("button");
   citBtn.type        = "button";
   citBtn.className   = "citation-link";
-  citBtn.textContent = "🔗";
+  citBtn.textContent = "📄";
   citBtn.title       = source ? "View source in PDF" : "Open PDF";
+  if (!source) citBtn.dataset.noSource = "true";
   citBtn.setAttribute("aria-label",
     source
       ? `View source for ${name.replace(/_/g, " ")} in PDF`
@@ -509,8 +686,15 @@ function createAutocompleteField(name, suggestion, group, source) {
       alert("PDF is no longer available in memory. Please re-upload.");
       return;
     }
-    // Pass source metadata if available; PdfModal handles null gracefully
-    PdfModal.open(fileUrl, source ?? null, name);
+    PdfModal.open(
+      fileUrl,
+      {
+        pageNumber: source?.pageNumber ?? 0,
+        text: source?.text || suggestion || "Null",
+        value: suggestion || "Null",
+      },
+      name,
+    );
   });
 
   row.appendChild(citBtn);
@@ -544,8 +728,8 @@ function renderRecord(record, pdfUrl) {
 
     group.appendChild(label);
 
-    // Pull per-field citation source if API returned source_meta
-    const source = record.source_meta?.[key] ?? null;
+    // Pull per-field citation source if API returned source metadata.
+    const source = record.source_meta?.[key] ?? record.sources?.[key] ?? record.source?.[key] ?? null;
     group.appendChild(createAutocompleteField(key, String(value ?? ""), group, source));
     resultForm.appendChild(group);
   });
@@ -554,7 +738,7 @@ function renderRecord(record, pdfUrl) {
 function showRecord(index) {
   if (!allRecords.length) return;
   currentIndex = index;
-  renderRecord(allRecords[index], resultForm.dataset.pdfUrl);
+  renderRecord(allRecords[index], allRecords[index]?._pdfUrl ?? resultForm.dataset.pdfUrl);
 }
 
 function showResultPanel(records, pdfUrl) {
