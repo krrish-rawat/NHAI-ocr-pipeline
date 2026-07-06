@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Warning Banner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Warning Banner Troubleshooting Tool</h1>
+    
+    <div class="test-section">
+        <h2>Step 1: Test Backend Classification</h2>
+        <p>Upload a PDF to test if classification is working:</p>
+        <input type="file" id="testFile" accept="application/pdf">
+        <button onclick="testClassification()">Test Classification</button>
+        <div id="classificationResult" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Test Full Extraction</h2>
+        <p>This will call the full /extract endpoint:</p>
+        <button onclick="testExtraction()">Test Extraction</button>
+        <div id="extractionResult" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Test DocValidity Directly</h2>
+        <p>Test the frontend validation logic directly:</p>
+        <button onclick="testDocValidityInvalid()">Test Invalid Document</button>
+        <button onclick="testDocValidityValid()">Test Valid Document</button>
+        <div id="docValidityResult" class="result" style="display:none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 4: Check Banner Element</h2>
+        <button onclick="checkBannerElement()">Check if Banner Exists</button>
+        <div id="bannerCheckResult" class="result" style="display:none;"></div>
+    </div>
+
+    <script>
+        async function testClassification() {
+            const fileInput = document.getElementById('testFile');
+            const result = document.getElementById('classificationResult');
+            
+            if (!fileInput.files[0]) {
+                result.textContent = '❌ Please select a PDF file first';
+                result.className = 'result error';
+                result.style.display = 'block';
+                return;
+            }
+
+            result.textContent = '⏳ Testing classification...';
+            result.className = 'result';
+            result.style.display = 'block';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+
+                const response = await fetch('/test-classify', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                result.textContent = JSON.stringify(data, null, 2);
+                result.className = data.is_valid === false ? 'result success' : 'result';
+                
+                if (data.is_valid === false) {
+                    result.textContent += '\n\n✅ Classification working! Document detected as invalid.';
+                } else if (data.error) {
+                    result.textContent += '\n\n❌ Classification failed - check server logs';
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ Error: ${error.message}\n\nIs the server running?`;
+                result.className = 'result error';
+            }
+        }
+
+        async function testExtraction() {
+            const fileInput = document.getElementById('testFile');
+            const result = document.getElementById('extractionResult');
+            
+            if (!fileInput.files[0]) {
+                result.textContent = '❌ Please select a PDF file first in Step 1';
+                result.className = 'result error';
+                result.style.display = 'block';
+                return;
+            }
+
+            result.textContent = '⏳ Running extraction (this may take 10-30 seconds)...';
+            result.className = 'result';
+            result.style.display = 'block';
+
+            try {
+                const formData = new FormData();
+                formData.append('files', fileInput.files[0]);
+                formData.append('attributes', 'test_field');
+                formData.append('output_format', 'json');
+
+                const response = await fetch('/extract', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                const summary = {
+                    has_document_validity: !!data.document_validity,
+                    document_validity: data.document_validity,
+                    record_status: data.records?.[0]?.status
+                };
+                
+                result.textContent = 'Response Summary:\n' + JSON.stringify(summary, null, 2);
+                
+                if (data.document_validity?.is_valid === false) {
+                    result.textContent += '\n\n✅ Backend returning invalid status correctly!';
+                    result.className = 'result success';
+                } else if (!data.document_validity) {
+                    result.textContent += '\n\n❌ document_validity missing from response!';
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ Error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+
+        function testDocValidityInvalid() {
+            const result = document.getElementById('docValidityResult');
+            result.style.display = 'block';
+
+            try {
+                // Check if DocValidity is available
+                if (typeof DocValidity === 'undefined') {
+                    result.textContent = '❌ DocValidity not found - wrong page?\nGo to http://localhost:8000 first';
+                    result.className = 'result error';
+                    return;
+                }
+
+                const testValidity = {
+                    is_valid: false,
+                    detected_type: 'Invoice',
+                    confidence: 'high',
+                    message: null
+                };
+
+                const shouldRender = DocValidity.evaluate(testValidity);
+                
+                const bannerElement = document.querySelector('#docValidityBanner');
+                const bannerVisible = bannerElement && !bannerElement.hidden;
+
+                result.textContent = `DocValidity.evaluate() returned: ${shouldRender}\n`;
+                result.textContent += `Banner element found: ${!!bannerElement}\n`;
+                result.textContent += `Banner visible: ${bannerVisible}\n\n`;
+
+                if (shouldRender === false && bannerVisible) {
+                    result.textContent += '✅ Frontend validation working correctly!';
+                    result.className = 'result success';
+                } else {
+                    result.textContent += '❌ Frontend validation NOT working\n';
+                    result.textContent += `Expected: shouldRender=false, banner visible\n`;
+                    result.textContent += `Got: shouldRender=${shouldRender}, banner visible=${bannerVisible}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.textContent = `❌ Error: ${error.message}\n\nMake sure you're on the main page`;
+                result.className = 'result error';
+            }
+        }
+
+        function testDocValidityValid() {
+            const result = document.getElementById('docValidityResult');
+            result.style.display = 'block';
+
+            try {
+                if (typeof DocValidity === 'undefined') {
+                    result.textContent = '❌ DocValidity not found - go to main page first';
+                    result.className = 'result error';
+                    return;
+                }
+
+                const testValidity = {
+                    is_valid: true,
+                    detected_type: 'letter of award (loa)',
+                    confidence: 'high',
+                    message: null
+                };
+
+                const shouldRender = DocValidity.evaluate(testValidity);
+                
+                const bannerElement = document.querySelector('#docValidityBanner');
+                const bannerVisible = bannerElement && !bannerElement.hidden;
+
+                result.textContent = `DocValidity.evaluate() returned: ${shouldRender}\n`;
+                result.textContent += `Banner visible: ${bannerVisible}\n\n`;
+
+                if (shouldRender === true && !bannerVisible) {
+                    result.textContent += '✅ Valid document handling works!';
+                    result.className = 'result success';
+                } else {
+                    result.textContent += '⚠️ Unexpected state\n';
+                    result.textContent += `Expected: shouldRender=true, banner hidden\n`;
+                    result.textContent += `Got: shouldRender=${shouldRender}, banner visible=${bannerVisible}`;
+                    result.className = 'result';
+                }
+            } catch (error) {
+                result.textContent = `❌ Error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+
+        function checkBannerElement() {
+            const result = document.getElementById('bannerCheckResult');
+            result.style.display = 'block';
+
+            const bannerElement = document.querySelector('#docValidityBanner');
+            
+            if (bannerElement) {
+                result.textContent = '✅ Banner element found in DOM\n\n';
+                result.textContent += `Element ID: ${bannerElement.id}\n`;
+                result.textContent += `Hidden: ${bannerElement.hidden}\n`;
+                result.textContent += `Class: ${bannerElement.className}\n`;
+                result.textContent += `innerHTML length: ${bannerElement.innerHTML.length}`;
+                result.className = 'result success';
+            } else {
+                result.textContent = '❌ Banner element NOT found!\n\n';
+                result.textContent += 'This means the HTML template is missing the banner.\n';
+                result.textContent += 'Check templates/index.html for <div id="docValidityBanner">'; 
+                result.className = 'result error';
+            }
+        }
+    </script>
+
+    <hr>
+    <p><strong>Instructions:</strong></p>
+    <ol>
+        <li>Make sure the server is running: <code>uvicorn app:app --reload</code></li>
+        <li>Select a PDF file in Step 1</li>
+        <li>Run through each test in order</li>
+        <li>Check which test fails to identify the issue</li>
+    </ol>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -35,6 +36,12 @@ async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
 
+@app.get("/test-validation", response_class=HTMLResponse)
+async def test_validation(request: Request):
+    """Testing tool for document validation"""
+    return templates.TemplateResponse(request, "test-validation.html")
+
+
 def _validate_pdf_upload(upload: UploadFile) -> None:
     filename = upload.filename or ""
     content_type = upload.content_type or ""
@@ -61,8 +68,11 @@ async def _save_upload_to_temp_pdf(upload: UploadFile) -> str:
 async def _process_single_upload(
     upload: UploadFile,
     requested_attributes: list[str],
-) -> list[dict[str, object]]:
-    """Save one upload to a temp file, extract, then clean up."""
+) -> dict[str, object]:
+    """Save one upload to a temp file, extract, then clean up.
+    
+    Returns a dict with "records" and "document_validity" keys.
+    """
     source_file = upload.filename or "uploaded.pdf"
     temp_path = ""
     try:
@@ -75,18 +85,26 @@ async def _process_single_upload(
             requested_attributes,
         )
     except Exception as exc:
-        return [
-            {
-                "source_file": source_file,
-                **{attr: "Null" for attr in requested_attributes},
-                "source_meta": {
-                    attr: {"pageNumber": 0, "text": "Null", "confidence": "unknown"}
-                    for attr in requested_attributes
-                },
-                "status": "Failed",
-                "failure_reason": str(exc),
-            }
-        ]
+        return {
+            "records": [
+                {
+                    "source_file": source_file,
+                    **{attr: "Null" for attr in requested_attributes},
+                    "source_meta": {
+                        attr: {"pageNumber": 0, "text": "Null", "confidence": "unknown"}
+                        for attr in requested_attributes
+                    },
+                    "status": "Failed",
+                    "failure_reason": str(exc),
+                }
+            ],
+            "document_validity": {
+                "is_valid": False,
+                "detected_type": "Error",
+                "confidence": "high",
+                "message": f"Upload processing failed: {str(exc)}",
+            },
+        }
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
@@ -143,13 +161,19 @@ async def extract(
 
     # All files are saved and dispatched to the thread pool concurrently so
     # N PDFs take ~the time of the slowest single file, not N × that time.
-    results: list[list[dict[str, object]]] = await asyncio.gather(
+    results: list[dict[str, object]] = await asyncio.gather(
         *[_process_single_upload(upload, requested_attributes) for upload in files]
     )
 
-    all_records: list[dict[str, object]] = [
-        record for file_records in results for record in file_records
-    ]
+    # Merge results: collect all records and use the first file's document_validity
+    # (For multi-file uploads, we only validate the first document)
+    all_records: list[dict[str, object]] = []
+    document_validity = None
+    
+    for result in results:
+        all_records.extend(result.get("records", []))
+        if document_validity is None and "document_validity" in result:
+            document_validity = result["document_validity"]
 
     if output_format == "csv":
         csv_output = records_to_csv(all_records, requested_attributes)
@@ -159,8 +183,16 @@ async def extract(
             headers={"Content-Disposition": 'attachment; filename="extracted_records.csv"'},
         )
 
+    # Build JSON response with document_validity at root level
+    response_data = {
+        "attributes": requested_attributes,
+        "records": all_records,
+    }
+    if document_validity:
+        response_data["document_validity"] = document_validity
+
     return Response(
-        content=records_to_json_payload(all_records, requested_attributes),
+        content=json.dumps(response_data, indent=2, ensure_ascii=False),
         media_type="application/json",
     )
 
@@ -168,3 +200,36 @@ async def extract(
 @app.post("/summarize")
 async def summarize(file: UploadFile = File(...)):
     return await _summarize_single_upload(file)
+
+
+@app.post("/test-classify")
+async def test_classify(file: UploadFile = File(...)):
+    """Test endpoint to verify document classification is working."""
+    temp_path = ""
+    try:
+        _validate_pdf_upload(file)
+        temp_path = await _save_upload_to_temp_pdf(file)
+        
+        # Test classification only
+        result = await run_in_threadpool(
+            extraction_service.classify_document,
+            temp_path,
+        )
+        
+        from src.services.extraction_service import _is_accepted_doc_type
+        is_valid = _is_accepted_doc_type(result)
+        
+        return {
+            "classified_as": result,
+            "is_valid": is_valid,
+            "message": "Classification successful"
+        }
+    except Exception as exc:
+        return {
+            "error": str(exc),
+            "message": "Classification failed"
+        }
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+

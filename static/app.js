@@ -30,6 +30,7 @@ const pdfModalClose  = document.querySelector("#pdfModalClose");
 const pdfModalTitle  = document.querySelector("#pdfModalTitle");
 const pdfPageInfo    = document.querySelector("#pdfPageInfo");
 const pdfCanvas      = document.querySelector("#pdfCanvas");
+const pdfCanvasWrap  = document.querySelector("#pdfCanvasWrap");
 const pdfViewerWrap  = document.querySelector("#pdfViewerWrap");
 const pdfHighlight   = document.querySelector("#pdfHighlight");
 const pdfTooltip     = document.querySelector("#pdfTooltip");
@@ -42,6 +43,9 @@ const pdfTryAgainBtn     = document.querySelector("#pdfTryAgainBtn");
 const pdfDownloadBtn     = document.querySelector("#pdfDownloadBtn");
 const pdfFallbackCloseBtn = document.querySelector("#pdfFallbackCloseBtn");
 
+// Document validity banner
+const docValidityBanner = document.querySelector("#docValidityBanner");
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let allRecords   = [];
 let currentIndex = 0;
@@ -49,6 +53,138 @@ let summaryRequestId = 0;
 
 // Tracks the current FileList-compatible array for submission
 let selectedFiles = [];
+
+// ─── Document Validity Banner ─────────────────────────────────────────────────
+/**
+ * Handles the document_validity object returned by the extraction API.
+ *
+ * Severity levels:
+ *   "block"  — is_valid: false  → hide results, show amber advisory banner
+ *   "notice" — is_valid: true + confidence: "low" → show inline soft notice
+ *   "none"   — is_valid: true + confidence: "high"|"medium" → clear and hide
+ *
+ * Returns true if the caller should proceed to render results,
+ * false if results must be suppressed (block case).
+ */
+const DocValidity = (() => {
+  const FALLBACK_MSG =
+    "We couldn't identify this as a Letter of Award (LOA), Completion Certificate (CC), " +
+    "Provisional Completion Certificate (PCC), Financial Closure, Debarment Records, or " +
+    "Debarment of Individuals document. Please verify the uploaded file and try again.";
+
+  const TYPE_LABELS = {
+    loa:                "Letter of Award (LOA)",
+    "letter of award":  "Letter of Award (LOA)",
+    pcc:                "Provisional Completion Certificate (PCC)",
+    "provisional completion certificate": "Provisional Completion Certificate (PCC)",
+    cc:                 "Completion Certificate (CC)",
+    "completion certificate": "Completion Certificate (CC)",
+    "financial closure": "Financial Closure",
+    "debarment records": "Debarment Records",
+    "debarment of individuals": "Debarment of Individuals",
+    debarment:          "Debarment Document",
+  };
+
+  function _label(detectedType) {
+    if (!detectedType) return "unknown document type";
+    const normalized = String(detectedType).toLowerCase().trim();
+    return TYPE_LABELS[normalized] || detectedType || "unknown document type";
+  }
+
+  function _clear() {
+    docValidityBanner.hidden = true;
+    docValidityBanner.className = "doc-validity-banner";
+    docValidityBanner.innerHTML = "";
+  }
+
+  /**
+   * Evaluates document_validity and updates the banner.
+   * @param {object|null} validity - The document_validity object from the API.
+   * @returns {boolean} true = render results, false = suppress results.
+   */
+  function evaluate(validity) {
+    _clear();
+
+    if (!validity) return true;   // no validity data — treat as valid
+
+    const { is_valid, detected_type, confidence, message } = validity;
+
+    // ── Case 1: Hard block ─────────────────────────────────────────────────
+    if (!is_valid) {
+      const msg = message || FALLBACK_MSG;
+      docValidityBanner.className = "doc-validity-banner doc-validity-banner--block";
+      docValidityBanner.innerHTML = `
+        <div class="banner-header">
+          <span class="banner-icon" aria-hidden="true">⚠️</span>
+          <div class="banner-header-text">
+            <p class="banner-title">Invalid Document Type Detected${detected_type ? ` (${detected_type})` : ''}. Extraction Halted.</p>
+            <p class="banner-body">${_escHtml(msg)}</p>
+          </div>
+        </div>
+        <div class="banner-actions">
+          <button type="button" class="banner-action banner-action--primary" id="bannerUploadBtn">
+            ↑ Upload Correct Document
+          </button>
+          <button type="button" class="banner-action banner-action--secondary" id="bannerForceExtractBtn">
+            Force Extract Anyway
+          </button>
+        </div>
+      `;
+      docValidityBanner.hidden = false;
+
+      // Wire the "Upload a different file" button to clear + focus the dropzone
+      document.getElementById("bannerUploadBtn").addEventListener("click", () => {
+        clearFilesBtn.click();
+        dropzone.scrollIntoView({ behavior: "smooth", block: "center" });
+        setTimeout(() => fileInput.click(), 300);
+      });
+
+      // Wire the "Force Extract Anyway" button to dismiss banner and show results
+      document.getElementById("bannerForceExtractBtn").addEventListener("click", () => {
+        _clear();
+        // Re-trigger result rendering if results were suppressed
+        if (resultForm.hidden) {
+          resultForm.hidden = false;
+          resultForm.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        // Also generate summary now since user chose to proceed
+        summaryRequestId += 1;
+        summarizeSelectedFiles(summaryRequestId);
+      });
+
+      return false;   // suppress results
+    }
+
+    // ── Case 2: Soft notice (low confidence) ──────────────────────────────
+    if (is_valid && confidence === "low") {
+      const typeLabel = _label(detected_type);
+      docValidityBanner.className = "doc-validity-banner doc-validity-banner--notice";
+      docValidityBanner.innerHTML = `
+        <span class="banner-notice-icon" aria-hidden="true">ℹ️</span>
+        <p class="banner-notice-text">
+          This appears to be a <strong>${_escHtml(typeLabel)}</strong>, but please review the extracted fields for accuracy.
+        </p>
+      `;
+      docValidityBanner.hidden = false;
+      return true;    // render results with notice
+    }
+
+    // ── Case 3: High/medium confidence — no banner ────────────────────────
+    return true;
+  }
+
+  function reset() { _clear(); }
+
+  function _escHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  return { evaluate, reset };
+})();
 
 // ─── Progress bar controller ─────────────────────────────────────────────────
 const PROGRESS_MESSAGES = [
@@ -174,307 +310,411 @@ const Progress = (() => {
 })();
 
 // ─── PDF Citation Modal ──────────────────────────────────────────────────────
-// Requires PDF.js loaded globally (pdfjsLib)
 const PdfModal = (() => {
-  let _pdfDoc      = null;
-  let _fileUrl     = null;
-  let _tooltipTimer = null;
+  let _pdfDoc         = null;
+  let _fileUrl        = null;
+  let _tooltipTimer   = null;
   let _lastSourceData = null;
-  let _lastFieldName = "";
+  let _lastFieldName  = "";
 
-  // Configure PDF.js worker (uses same CDN version)
   if (typeof pdfjsLib !== "undefined") {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
   }
 
-  function _show()  { pdfModal.hidden = false; document.body.style.overflow = "hidden"; }
-  function _hide()  { pdfModal.hidden = true;  document.body.style.overflow = ""; _cleanup(); }
+  function _show() { pdfModal.hidden = false; document.body.style.overflow = "hidden"; }
+  function _hide() { pdfModal.hidden = true;  document.body.style.overflow = ""; _cleanup(); }
 
   function _cleanup() {
     clearTimeout(_tooltipTimer);
-    _clearHighlights();
-    pdfTooltip.hidden   = true;
+    pdfTooltip.hidden         = true;
     pdfFallbackContent.hidden = true;
-    pdfViewerWrap.hidden = false;
-    pdfCanvas.hidden = false;
-    pdfPageInfo.textContent = "";
+    pdfViewerWrap.hidden      = false;
+    pdfCanvas.hidden          = false;
+    pdfPageInfo.textContent   = "";
+    pdfCanvasWrap.querySelectorAll(".pdf-highlight-box, .pdf-bbox-overlay").forEach(el => el.remove());
     pdfCanvas.getContext("2d")?.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+    // Reset modal scroll position
+    const scrollContainer = pdfModal.querySelector(".pdf-modal-body");
+    if (scrollContainer) scrollContainer.scrollTop = 0;
   }
 
-  function _clearHighlights() {
-    pdfHighlight.hidden = true;
-    pdfViewerWrap.querySelectorAll(".pdf-highlight-box").forEach((el) => el.remove());
-  }
-
-  function _formatFieldName(fieldName) {
-    return fieldName ? fieldName.replace(/_/g, " ") : "Source field";
-  }
-
-  function _sourcePageLabel(sourceData) {
-    const pageNumber = Number(sourceData?.pageNumber || 0);
-    return pageNumber > 0 ? `Page ${pageNumber}` : "Unavailable";
-  }
-
-  function _showFallback(message, sourceData, fieldName) {
-    pdfViewerWrap.hidden = true;
-    pdfCanvas.hidden = true;
-    pdfHighlight.hidden = true;
-    pdfTooltip.hidden = true;
-
-    pdfErrorMsg.textContent = `${message} PDF viewer unavailable. Source information:`;
-    pdfFallbackLabel.textContent = _formatFieldName(fieldName);
-    pdfFallbackValue.textContent = sourceData?.text || sourceData?.value || "Null";
-    pdfFallbackPage.textContent = _sourcePageLabel(sourceData);
-    pdfFallbackContent.hidden = false;
-    pdfPageInfo.textContent = _sourcePageLabel(sourceData);
-  }
-
+  // ── Render a PDF page ─────────────────────────────────────────────────────
   async function _renderPage(pageNum) {
     if (!_pdfDoc) return null;
     try {
-      const page     = await _pdfDoc.getPage(pageNum);
-      const scale    = Math.min(
-        pdfViewerWrap.parentElement.clientWidth / page.getViewport({ scale: 1 }).width * 0.9,
-        1.5
-      );
-      const viewport = page.getViewport({ scale });
-      const ctx      = pdfCanvas.getContext("2d");
+      const page      = await _pdfDoc.getPage(pageNum);
+      const available = pdfViewerWrap.clientWidth || 800;
+      const scale     = Math.min(available / page.getViewport({ scale: 1 }).width * 0.92, 1.6);
+      const viewport  = page.getViewport({ scale });
       pdfCanvas.width  = viewport.width;
       pdfCanvas.height = viewport.height;
-      await page.render({ canvasContext: ctx, viewport }).promise;
+      await page.render({ canvasContext: pdfCanvas.getContext("2d"), viewport }).promise;
       pdfPageInfo.textContent = `Page ${pageNum} of ${_pdfDoc.numPages}`;
       return { page, viewport };
-    } catch {
-      _showFallback("Unable to render this page.", _lastSourceData, _lastFieldName);
+    } catch (err) {
+      console.error("[Citation] render failed:", err);
       return null;
     }
   }
 
-  function _normalizeSnippet(text) {
-    return String(text || "")
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function _itemBox(item, viewport) {
-    const transform = pdfjsLib.Util.transform(viewport.transform, item.transform);
-    const height = Math.max(Math.abs(transform[3]), item.height * viewport.scale, 8);
-    const width = Math.max(item.width * viewport.scale, 8);
-    return {
-      left: transform[4],
-      top: transform[5] - height,
-      width,
-      height,
-      centerY: transform[5] - height / 2,
-    };
-  }
-
-  function _findSnippetItemRange(items, snippet) {
-    const target = _normalizeSnippet(snippet);
-    if (!target || target === "null") return null;
-
-    for (let start = 0; start < items.length; start += 1) {
-      let combined = "";
-      for (let end = start; end < items.length; end += 1) {
-        combined = `${combined} ${items[end].str || ""}`;
-        const normalized = _normalizeSnippet(combined);
-        if (normalized.includes(target) || target.includes(normalized)) {
-          return { start, end };
-        }
-        if (normalized.length > target.length + 120) break;
-      }
-    }
-
-    const targetWords = target.split(" ").filter(Boolean);
-    if (!targetWords.length) return null;
-
-    let best = null;
-    for (let start = 0; start < items.length; start += 1) {
-      let combined = "";
-      for (let end = start; end < Math.min(items.length, start + 12); end += 1) {
-        combined = `${combined} ${items[end].str || ""}`;
-        const normalized = _normalizeSnippet(combined);
-        const matchedWords = targetWords.filter((word) => normalized.includes(word)).length;
-        const score = matchedWords / targetWords.length;
-        if (!best || score > best.score) best = { start, end, score };
-      }
-    }
-
-    return best?.score >= 0.6 ? best : null;
-  }
-
-  function _groupBoxesByLine(boxes) {
-    const lines = [];
-    boxes.forEach((box) => {
-      const line = lines.find((candidate) => Math.abs(candidate.centerY - box.centerY) < 8);
-      if (line) {
-        line.boxes.push(box);
-        line.centerY = (line.centerY + box.centerY) / 2;
-      } else {
-        lines.push({ centerY: box.centerY, boxes: [box] });
-      }
+  // ── Paint yellow highlight directly onto the canvas ───────────────────────
+  // boxes: array of { left, top, width, height } in canvas pixels
+  function _paintHighlight(boxes) {
+    const ctx = pdfCanvas.getContext("2d");
+    if (!ctx || !boxes.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.fillStyle = "rgba(255, 215, 0, 0.55)";
+    const PAD = 3;
+    boxes.forEach(({ left, top, width, height }) => {
+      ctx.fillRect(
+        Math.max(left  - PAD, 0),
+        Math.max(top   - PAD, 0),
+        width  + PAD * 2,
+        height + PAD * 2,
+      );
     });
-    return lines;
+    ctx.restore();
   }
 
-  function _drawHighlightBoxes(boxes, label) {
-    _clearHighlights();
-    const lines = _groupBoxesByLine(boxes);
-    lines.forEach((line) => {
-      const left = Math.min(...line.boxes.map((box) => box.left));
-      const top = Math.min(...line.boxes.map((box) => box.top));
-      const right = Math.max(...line.boxes.map((box) => box.left + box.width));
-      const bottom = Math.max(...line.boxes.map((box) => box.top + box.height));
-      const highlight = document.createElement("div");
-      highlight.className = "pdf-highlight pdf-highlight-box";
-      highlight.style.left = `${Math.max(left - 2, 0)}px`;
-      highlight.style.top = `${Math.max(top - 2, 0)}px`;
-      highlight.style.width = `${right - left + 4}px`;
-      highlight.style.height = `${bottom - top + 4}px`;
-      pdfViewerWrap.appendChild(highlight);
-    });
-
-    const first = pdfViewerWrap.querySelector(".pdf-highlight-box");
-    if (!first) return false;
-
-    pdfTooltip.textContent = label || "Source text highlighted";
-    pdfTooltip.style.left = `${first.offsetLeft + first.offsetWidth / 2}px`;
-    pdfTooltip.style.top = `${Math.max(first.offsetTop - 36, 4)}px`;
+  // ── Show tooltip above the first highlighted box ──────────────────────────
+  function _showTooltip(boxes) {
+    if (!boxes.length) return;
+    const b  = boxes[0];
+    const cr = pdfCanvas.getBoundingClientRect();
+    const wr = pdfCanvasWrap.getBoundingClientRect();
+    pdfTooltip.textContent     = "Source text highlighted";
+    pdfTooltip.style.left      = `${(cr.left - wr.left) + b.left + b.width / 2}px`;
+    pdfTooltip.style.top       = `${Math.max((cr.top - wr.top) + b.top - 36, 4)}px`;
     pdfTooltip.style.transform = "translateX(-50%)";
     pdfTooltip.hidden = false;
     clearTimeout(_tooltipTimer);
     _tooltipTimer = setTimeout(() => { pdfTooltip.hidden = true; }, 5000);
-
-    setTimeout(() => {
-      first.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 150);
-    return true;
+    _scrollToHighlight(boxes);
   }
 
-  async function _highlightSnippet(page, viewport, sourceData) {
-    const snippet = sourceData?.text || sourceData?.value || "";
-    if (!snippet || snippet === "Null") return false;
-
-    const textContent = await page.getTextContent();
-    const items = textContent.items.filter((item) => String(item.str || "").trim());
-    const range = _findSnippetItemRange(items, snippet);
-    if (!range) return false;
-
-    const boxes = items
-      .slice(range.start, range.end + 1)
-      .map((item) => _itemBox(item, viewport));
-
-    return _drawHighlightBoxes(boxes, "Source text highlighted");
-  }
-
-  function _placeHighlight(bbox, renderedViewport) {
-    if (!bbox || !renderedViewport) return;
-
-    const viewport = renderedViewport.viewport || renderedViewport;
-    // renderedViewport is the viewport used when the canvas was rendered.
-    // bbox coordinates are in PDF user-space (scale=1).
-    // Convert using the rendered viewport's scale.
-    const scale = viewport.scale;
-    const left  = bbox.x * scale;
-    // PDF y=0 is bottom-left; canvas y=0 is top-left — flip the y axis.
-    const top   = (viewport.height / scale - bbox.y - bbox.height) * scale;
-    const w     = bbox.width  * scale;
-    const h     = bbox.height * scale;
-
-    pdfHighlight.style.left   = `${left}px`;
-    pdfHighlight.style.top    = `${top}px`;
-    pdfHighlight.style.width  = `${w}px`;
-    pdfHighlight.style.height = `${h}px`;
-    pdfHighlight.hidden = false;
-
-    // Tooltip centred above the highlight
-    pdfTooltip.textContent     = "Source location";
-    pdfTooltip.style.left      = `${left + w / 2}px`;
-    pdfTooltip.style.top       = `${Math.max(top - 36, 4)}px`;
-    pdfTooltip.style.transform = "translateX(-50%)";
-    pdfTooltip.hidden = false;
-    clearTimeout(_tooltipTimer);
-    _tooltipTimer = setTimeout(() => { pdfTooltip.hidden = true; }, 4000);
-
-    // Scroll into view after paint
-    setTimeout(() => {
-      pdfHighlight.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 150);
-  }
-
-  // Public: open modal for a given file blob URL + source metadata
-  async function open(fileUrl, sourceData, fieldName) {
-    _cleanup();
-    pdfCanvas.hidden = false;
-    pdfModalTitle.textContent = fieldName ? `Source — ${fieldName.replace(/_/g, " ")}` : "Source Document";
-    pdfPageInfo.textContent   = "";
-    _fileUrl = fileUrl;
-    _lastSourceData = sourceData;
-    _lastFieldName = fieldName;
-    _show();
-
-    if (typeof pdfjsLib === "undefined") {
-      _showFallback("", sourceData, fieldName);
+  // ── Smooth-scroll the modal body so the highlighted region is centred ─────
+  // Accepts either a DOM element (the bbox overlay div) or a canvas-pixel
+  // boxes array for the legacy canvas-paint path.
+  function _scrollToHighlight(target) {
+    // If we received an Element (the overlay div), use scrollIntoView directly.
+    if (target instanceof Element) {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
       return;
     }
 
-    try {
-      pdfViewerWrap.hidden = false;
-      pdfFallbackContent.hidden = true;
-      _pdfDoc = await pdfjsLib.getDocument(fileUrl).promise;
-      const pageNum = (sourceData?.pageNumber) || 1;
-      const clampedPage = (pageNum >= 1 && pageNum <= _pdfDoc.numPages) ? pageNum : 1;
+    // Legacy path: boxes array from canvas-paint strategy.
+    const boxes = Array.isArray(target) ? target : [];
+    if (!boxes.length) return;
 
-      if (clampedPage !== pageNum) {
-        await _renderPage(1);
-        _showFallback(`Page ${pageNum} is out of range.`, sourceData, fieldName);
+    requestAnimationFrame(() => {
+      const minTop    = Math.min(...boxes.map(b => b.top));
+      const maxBottom = Math.max(...boxes.map(b => b.top + b.height));
+      const midY      = (minTop + maxBottom) / 2;
+
+      const scrollContainer = pdfModal.querySelector(".pdf-modal-body");
+      if (!scrollContainer) {
+        pdfCanvas.scrollIntoView({ behavior: "smooth", block: "center" });
         return;
       }
 
-      const renderedVp = await _renderPage(clampedPage);
-
-      if (sourceData?.boundingBox && renderedVp) {
-        _placeHighlight(sourceData.boundingBox, renderedVp);
-        pdfPageInfo.textContent = `Page ${clampedPage} — "${sourceData?.text || sourceData?.value || "source"}" highlighted below`;
-      } else if (renderedVp && await _highlightSnippet(renderedVp.page, renderedVp.viewport, sourceData)) {
-        const confidence = sourceData?.confidence && sourceData.confidence !== "unknown"
-          ? ` (${sourceData.confidence} confidence)`
-          : "";
-        pdfPageInfo.textContent = `Page ${clampedPage} — "${sourceData?.text || sourceData?.value}" highlighted below${confidence}`;
-      } else {
-        pdfTooltip.textContent     = "Source text not found on rendered page";
-        pdfTooltip.style.left      = "50%";
-        pdfTooltip.style.top       = "8px";
-        pdfTooltip.style.transform = "translateX(-50%)";
-        pdfTooltip.hidden = false;
-        clearTimeout(_tooltipTimer);
-        _tooltipTimer = setTimeout(() => { pdfTooltip.hidden = true; }, 5000);
+      // Walk up offsetParent chain from canvas to the scroll container
+      let canvasOffsetTop = 0;
+      let el = pdfCanvas;
+      while (el && el !== scrollContainer) {
+        canvasOffsetTop += el.offsetTop;
+        el = el.offsetParent;
       }
+
+      const highlightAbsY = canvasOffsetTop + midY;
+      const targetScrollTop = highlightAbsY - scrollContainer.clientHeight / 2;
+      scrollContainer.scrollTo({ top: Math.max(targetScrollTop, 0), behavior: "smooth" });
+    });
+  }
+
+  // ── Strategy A+: bbox overlay div ────────────────────────────────────────
+  // The backend bbox comes from Tesseract, which operates on the rasterised
+  // page image.  _pixels_to_points divides by zoom but preserves the
+  // top-down y-axis (y=0 at top of page, same as the canvas).
+  //
+  // To normalise to 0-1 we therefore divide by the CANVAS pixel dimensions,
+  // then multiply back out by zoom — which simplifies to dividing the
+  // point-space coords by (canvasPx / zoom):
+  //
+  //   nx = x0_pt / (canvas.width  / zoom)
+  //   ny = y0_pt / (canvas.height / zoom)
+  //
+  // canvasDim / zoom == naturalViewport dimension (in pt), so the formula
+  // is equivalent to x0_pt / naturalWidth — but we pass the canvas and zoom
+  // explicitly to make the intent clear and avoid confusion with the PDF
+  // y-flip that applies to native (non-scanned) PDFs.
+  function _injectBboxOverlay(sourceData, canvasWidth, canvasHeight, zoom) {
+    // Remove any previous overlay
+    pdfCanvasWrap.querySelectorAll(".pdf-bbox-overlay").forEach(el => el.remove());
+
+    const rects = sourceData.bbox_lines || (sourceData.bbox ? [sourceData.bbox] : null);
+    if (!rects || !rects.length || !canvasWidth || !canvasHeight) return null;
+
+    // Natural page dimensions in the same point space as the bbox
+    const natW = canvasWidth  / zoom;
+    const natH = canvasHeight / zoom;
+
+    // Union of all rects
+    const x0 = Math.min(...rects.map(r => r[0]));
+    const y0 = Math.min(...rects.map(r => r[1]));
+    const x1 = Math.max(...rects.map(r => r[2]));
+    const y1 = Math.max(...rects.map(r => r[3]));
+
+    // Normalise to 0-1, clamped to page bounds
+    const nx = Math.max(0, Math.min(x0 / natW, 1));
+    const ny = Math.max(0, Math.min(y0 / natH, 1));
+    const nw = Math.max(0, Math.min((x1 - x0) / natW, 1 - nx));
+    const nh = Math.max(0, Math.min((y1 - y0) / natH, 1 - ny));
+
+    // Reject degenerate boxes
+    if (nw < 0.001 || nh < 0.001) return null;
+
+    const overlay = document.createElement("div");
+    overlay.className    = "pdf-bbox-overlay";
+    overlay.style.left   = `${nx * 100}%`;
+    overlay.style.top    = `${ny * 100}%`;
+    overlay.style.width  = `${nw * 100}%`;
+    overlay.style.height = `${nh * 100}%`;
+    overlay.setAttribute("aria-hidden", "true");
+
+    pdfCanvasWrap.appendChild(overlay);
+    return overlay;
+  }
+
+  // ── Strategy A: use pre-computed PDF-point bbox from the backend ──────────
+  // sourceData.bbox       = [x0, y0, x1, y1]  in PDF points (72 pt = 1 inch)
+  // sourceData.bbox_lines = [[x0,y0,x1,y1],…] one per line, same units
+  //
+  // PDF.js viewport.transform = [scaleX, 0, 0, -scaleY, offsetX, offsetY]
+  // To convert a PDF point (px, py) → canvas pixel (cx, cy):
+  //   cx = px * scaleX + offsetX
+  //   cy = py * (-scaleY) + offsetY   (y-axis is flipped in PDF coordinates)
+  function _bboxToCanvasBoxes(sourceData, viewport) {
+    const rects = sourceData.bbox_lines || (sourceData.bbox ? [sourceData.bbox] : null);
+    if (!rects || !rects.length) return null;
+
+    const [scaleX, , , scaleY, offX, offY] = viewport.transform;
+    // scaleY is negative in PDF.js (PDF y grows up, canvas y grows down)
+
+    return rects.map(([x0, y0, x1, y1]) => {
+      // Top-left corner in canvas space
+      const cx0 = x0 * scaleX + offX;
+      const cy0 = y0 * scaleY + offY;   // scaleY is negative, offY accounts for flip
+      // Bottom-right corner
+      const cx1 = x1 * scaleX + offX;
+      const cy1 = y1 * scaleY + offY;
+
+      // Normalise so left/top are always the smaller values
+      const left   = Math.min(cx0, cx1);
+      const top    = Math.min(cy0, cy1);
+      const width  = Math.abs(cx1 - cx0);
+      const height = Math.abs(cy1 - cy0);
+      return { left, top, width, height };
+    });
+  }
+
+  // ── Strategy B: text-layer search (fallback for native-text PDFs) ─────────
+  function _norm(t) {
+    return String(t || "").toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function _itemBox(item, viewport) {
+    // m = [ scaleX, skewY, skewX, scaleY, translateX, translateY ]
+    // In PDF.js the transform is already in canvas-pixel space after applying
+    // viewport.transform, so m[4]/m[5] are the bottom-left corner in canvas px.
+    const m      = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    // scaleX in the composed matrix gives us the actual rendered scale
+    const scaleX = Math.sqrt(m[0] * m[0] + m[1] * m[1]);
+    const height = Math.max(Math.abs(m[3]), 6);
+    return {
+      left:   m[4],
+      top:    m[5] - height,
+      width:  Math.max(item.width * scaleX, 6),
+      height,
+    };
+  }
+
+  function _findItems(items, snippet) {
+    const target = _norm(snippet);
+    if (!target || target === "null" || target.length < 2) return [];
+
+    // Pass 1 — exact sliding window
+    for (let s = 0; s < items.length; s++) {
+      let buf = "";
+      for (let e = s; e < items.length; e++) {
+        buf += (buf ? " " : "") + (items[e].str || "");
+        if (_norm(buf).includes(target)) return items.slice(s, e + 1);
+        if (_norm(buf).length > target.length + 80) break;
+      }
+    }
+
+    // Pass 2 — fuzzy word overlap (multi-word only, ≥70%)
+    const words = target.split(" ").filter(w => w.length >= 2);
+    if (words.length < 2) return [];
+    let best = null;
+    for (let s = 0; s < items.length; s++) {
+      let buf = "";
+      for (let e = s; e < Math.min(items.length, s + 14); e++) {
+        buf += (buf ? " " : "") + (items[e].str || "");
+        const score = words.filter(w => _norm(buf).includes(w)).length / words.length;
+        if (!best || score > best.score) best = { s, e, score };
+        if (score === 1) break;
+      }
+    }
+    return best?.score >= 0.7 ? items.slice(best.s, best.e + 1) : [];
+  }
+
+  async function _tryHighlightViaTextLayer(page, viewport, snippet) {
+    if (!snippet || snippet === "Null") return false;
+    try {
+      const tc    = await page.getTextContent();
+      const items = (tc.items || []).filter(it => String(it.str || "").trim());
+      if (!items.length) return false;
+      const matched = _findItems(items, snippet);
+      if (!matched.length) {
+        console.debug("[Citation] text-layer: no match for snippet:", snippet?.slice(0, 60));
+        return false;
+      }
+      const boxes = matched.map(it => _itemBox(it, viewport));
+      _paintHighlight(boxes);
+      _showTooltip(boxes);
+      return true;
     } catch (err) {
-      _showFallback("", sourceData, fieldName);
+      console.warn("[Citation] text-layer search failed:", err);
+      return false;
     }
   }
 
-  pdfTryAgainBtn.addEventListener("click", () => {
-    if (_fileUrl) open(_fileUrl, _lastSourceData, _lastFieldName);
-  });
+  // ── Source banner removed — highlight is rendered directly on the canvas ──
+  // (function stub kept to avoid call-site changes in open())
+  function _showBanner(_snippet, _fieldName) { /* intentionally empty */ }
 
-  pdfDownloadBtn.addEventListener("click", () => {
-    if (!_fileUrl) return;
-    const link = document.createElement("a");
-    link.href = _fileUrl;
-    link.download = "source.pdf";
-    link.click();
-  });
+  function _esc(s) {
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
 
-  // Close handlers
-  pdfModalClose.addEventListener("click", _hide);
+  function _showFallback(msg, sourceData, fieldName) {
+    pdfViewerWrap.hidden = true; pdfCanvas.hidden = true; pdfTooltip.hidden = true;
+    pdfErrorMsg.textContent      = `${msg} Source information:`;
+    pdfFallbackLabel.textContent = (fieldName || "").replace(/_/g, " ");
+    pdfFallbackValue.textContent = sourceData?.text || sourceData?.value || "Null";
+    pdfFallbackPage.textContent  = "See source text above";
+    pdfFallbackContent.hidden    = false;
+  }
+
+  // ── Public open() ─────────────────────────────────────────────────────────
+  async function open(fileUrl, sourceData, fieldName) {
+    _cleanup();
+    pdfCanvas.hidden           = false;
+    pdfModalTitle.textContent  = fieldName
+      ? `Source — ${fieldName.replace(/_/g, " ")}` : "Source Document";
+    _fileUrl        = fileUrl;
+    _lastSourceData = sourceData;
+    _lastFieldName  = fieldName;
+    _show();
+
+    if (typeof pdfjsLib === "undefined") {
+      _showFallback("PDF.js not loaded.", sourceData, fieldName); return;
+    }
+
+    const snippet = sourceData?.text || sourceData?.value || "";
+    _showBanner(snippet, fieldName);
+
+    try {
+      pdfViewerWrap.hidden = false; pdfFallbackContent.hidden = true;
+      _pdfDoc = await pdfjsLib.getDocument(fileUrl).promise;
+
+      // pageNumber from backend is 0-indexed sentinel; treat 0 as "page 1".
+      const rawPage    = Number(sourceData?.pageNumber) || 0;
+      const targetPage = rawPage >= 1 ? rawPage : 1;
+      const clampedPage = Math.min(Math.max(targetPage, 1), _pdfDoc.numPages);
+
+      const rendered = await _renderPage(clampedPage);
+      if (!rendered) { _showFallback("Page render failed.", sourceData, fieldName); return; }
+
+      const { page, viewport } = rendered;
+      let highlighted = false;
+
+      // ── Strategy A: bbox overlay div (scanned PDFs — Tesseract top-down coords) ──
+      // Pass the rendered canvas pixel dimensions and the backend zoom factor so
+      // _injectBboxOverlay can convert Tesseract "image points" → 0-1 percentages
+      // without applying the PDF y-flip (which only applies to native vector PDFs).
+      if (sourceData?.bbox || sourceData?.bbox_lines) {
+        // zoom = PdfRenderer.zoom (default 2.0).  If the field doesn't carry it
+        // we fall back to the ratio canvas / naturalViewport, which is the same value.
+        const naturalViewport = page.getViewport({ scale: 1 });
+        const derivedZoom = pdfCanvas.width / naturalViewport.width;
+
+        const overlayEl = _injectBboxOverlay(
+          sourceData,
+          pdfCanvas.width,
+          pdfCanvas.height,
+          derivedZoom,
+        );
+
+        if (overlayEl) {
+          // Position the tooltip above the overlay using its rendered rect
+          requestAnimationFrame(() => {
+            const or = overlayEl.getBoundingClientRect();
+            const wr = pdfCanvasWrap.getBoundingClientRect();
+            pdfTooltip.textContent     = "Source text highlighted";
+            pdfTooltip.style.left      = `${(or.left - wr.left) + or.width / 2}px`;
+            pdfTooltip.style.top       = `${Math.max((or.top - wr.top) - 36, 4)}px`;
+            pdfTooltip.style.transform = "translateX(-50%)";
+            pdfTooltip.hidden = false;
+            clearTimeout(_tooltipTimer);
+            _tooltipTimer = setTimeout(() => { pdfTooltip.hidden = true; }, 5000);
+          });
+
+          _scrollToHighlight(overlayEl);
+          highlighted = true;
+          console.debug(`[Citation] bbox overlay at ${overlayEl.style.left},${overlayEl.style.top} for "${fieldName}"`);
+        }
+      }
+
+      // ── Strategy B: text-layer fallback (native-text PDFs, no bbox) ──────
+      if (!highlighted && snippet && snippet !== "Null") {
+        highlighted = await _tryHighlightViaTextLayer(page, viewport, snippet);
+        if (highlighted) {
+          console.debug(`[Citation] highlighted via text-layer for "${fieldName}"`);
+        }
+      }
+
+      pdfPageInfo.textContent = highlighted
+        ? `Page ${clampedPage} — text highlighted in yellow`
+        : `Page ${clampedPage}`;
+
+      // Fallback: if nothing was highlighted, scroll to the top of the canvas
+      // so the user at least lands on the correct page.
+      if (!highlighted) {
+        const scrollContainer = pdfModal.querySelector(".pdf-modal-body");
+        if (scrollContainer) {
+          setTimeout(() => scrollContainer.scrollTo({ top: 0, behavior: "smooth" }), 120);
+        }
+      }
+
+    } catch (err) {
+      console.error("[Citation] open() error:", err);
+      _showFallback("Unable to load PDF.", sourceData, fieldName);
+    }
+  }
+
+  pdfTryAgainBtn.addEventListener("click",      () => { if (_fileUrl) open(_fileUrl, _lastSourceData, _lastFieldName); });
+  pdfDownloadBtn.addEventListener("click",      () => { if (!_fileUrl) return; const a=document.createElement("a"); a.href=_fileUrl; a.download="source.pdf"; a.click(); });
+  pdfModalClose.addEventListener("click",       _hide);
   pdfFallbackCloseBtn.addEventListener("click", _hide);
-  pdfModal.addEventListener("click", (e) => { if (e.target === pdfModal) _hide(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pdfModal.hidden) _hide(); });
+  pdfModal.addEventListener("click",            e => { if (e.target === pdfModal) _hide(); });
+  document.addEventListener("keydown",          e => { if (e.key === "Escape" && !pdfModal.hidden) _hide(); });
 
   return { open };
 })();
@@ -686,12 +926,15 @@ function createAutocompleteField(name, suggestion, group, source) {
       alert("PDF is no longer available in memory. Please re-upload.");
       return;
     }
+    // Pass the full source object so PdfModal gets bbox / bbox_lines too.
     PdfModal.open(
       fileUrl,
       {
         pageNumber: source?.pageNumber ?? 0,
-        text: source?.text || suggestion || "Null",
-        value: suggestion || "Null",
+        text:       source?.text       || suggestion || "Null",
+        value:      suggestion         || "Null",
+        bbox:       source?.bbox       ?? null,
+        bbox_lines: source?.bbox_lines ?? null,
       },
       name,
     );
@@ -848,6 +1091,7 @@ extractForm.addEventListener("submit", async (event) => {
 
   resultForm.hidden = true;
   Progress.reset();
+  DocValidity.reset();
   resetSummaryDashboard();
 
   const formData   = new FormData(extractForm);
@@ -871,13 +1115,9 @@ extractForm.addEventListener("submit", async (event) => {
 
   setBusy(true);
   Progress.start(25000); // estimate 25 s; bar self-adjusts
-  setMessage("Processing uploaded PDFs. This may take a moment for scanned documents.");
-  summaryRequestId += 1;
-  summarizeSelectedFiles(summaryRequestId);
+  setMessage("Validating document type and processing PDFs...");
 
   // Create object URLs for the uploaded files so citation modal can load them later.
-  // We store a map { filename → objectURL }. We only need the first file for now
-  // (multi-file support can extend this).
   const pdfObjectUrls = {};
   selectedFiles.forEach((f) => {
     pdfObjectUrls[f.name] = URL.createObjectURL(f);
@@ -898,6 +1138,8 @@ extractForm.addEventListener("submit", async (event) => {
     }
 
     const data    = await response.json();
+    console.log('[DEBUG] API Response:', data);
+    
     const records = Array.isArray(data)
       ? data
       : Array.isArray(data.records)
@@ -917,7 +1159,36 @@ extractForm.addEventListener("submit", async (event) => {
     });
 
     Progress.done();
+
+    // ── PRE-RENDER HARD GATE: Document Type Validation ────────────────────
+    // Extraction has completed. Check if document is valid BEFORE rendering
+    // results or generating summary.
+    const validity = data.document_validity ?? null;
+    console.log('[DEBUG] Document Validity:', validity);
+    
+    // Store records globally so "Force Extract Anyway" can access them
+    allRecords   = records;
+    currentIndex = 0;
+
+    const shouldRenderResults = DocValidity.evaluate(validity);
+    console.log('[DEBUG] Should Render Results:', shouldRenderResults);
+
+    if (!shouldRenderResults) {
+      // ❌ INVALID DOCUMENT DETECTED
+      // Results suppressed, warning banner shown, NO SUMMARY GENERATED
+      resultForm.hidden = true;
+      resetSummaryDashboard();  // Ensure summary stays empty
+      setStatus("ready", "System Operational");
+      setMessage("");
+      return;  // HARD STOP: Exit without rendering results or summary
+    }
+
+    // ✅ DOCUMENT VALID - Proceed with results + summary
     showResultPanel(records, records[0]?._pdfUrl ?? null);
+
+    // NOW generate summary (only for valid documents)
+    summaryRequestId += 1;
+    summarizeSelectedFiles(summaryRequestId);
 
     // Brief success state on the button
     submitButton.classList.add("btn--success");

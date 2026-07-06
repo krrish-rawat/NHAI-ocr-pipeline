@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Validation Testing Tool</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1e293b;
+            margin-top: 0;
+        }
+        h2 {
+            color: #475569;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #334155;
+        }
+        input[type="file"],
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input[type="file"] {
+            padding: 8px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success {
+            background: #dcfce7;
+            border-color: #86efac;
+            color: #166534;
+        }
+        .error {
+            background: #fee2e2;
+            border-color: #fca5a5;
+            color: #991b1b;
+        }
+        .warning {
+            background: #fef3c7;
+            border-color: #fcd34d;
+            color: #92400e;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 12px;
+            margin: 5px 0;
+        }
+        .status-valid {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .status-invalid {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .status-pending {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .loading {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            background: none;
+            color: #64748b;
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            font-weight: 600;
+        }
+        .tab-btn.active {
+            color: #3b82f6;
+            border-bottom-color: #3b82f6;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .diagnostic-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f1f5f9;
+            border-left: 4px solid #3b82f6;
+            border-radius: 4px;
+        }
+        .diagnostic-item.pass {
+            border-left-color: #10b981;
+            background: #ecfdf5;
+        }
+        .diagnostic-item.fail {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+        code {
+            background: #1e293b;
+            color: #10b981;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Document Validation Testing Tool</h1>
+        <p>Test the document validation gate to ensure invalid documents are properly rejected.</p>
+    </div>
+
+    <div class="container">
+        <h2>Test Classification Endpoint</h2>
+        <div class="form-group">
+            <label for="testFile">Upload PDF to classify:</label>
+            <input type="file" id="testFile" accept=".pdf" />
+        </div>
+        <button onclick="testClassify()">Test Classification</button>
+        <div id="classifyResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Test Full Extraction Endpoint</h2>
+        <div class="form-group">
+            <label for="extractFile">Upload PDF for extraction:</label>
+            <input type="file" id="extractFile" accept=".pdf" />
+        </div>
+        <div class="form-group">
+            <label for="attributes">Attributes (comma-separated):</label>
+            <input type="text" id="attributes" placeholder="e.g., project_name, amount, date" value="project_name" />
+        </div>
+        <button onclick="testExtract()">Test Extraction</button>
+        <div id="extractResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Diagnostics</h2>
+        <button onclick="runDiagnostics()">Run Full Diagnostics</button>
+        <div id="diagnosticsResult" class="result" style="display: none; margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        function showResult(elementId, data, isError = false) {
+            const el = document.getElementById(elementId);
+            el.style.display = 'block';
+            el.className = 'result' + (isError ? ' error' : ' success');
+            el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        }
+
+        async function testClassify() {
+            const fileInput = document.getElementById('testFile');
+            if (!fileInput.files.length) {
+                showResult('classifyResult', 'Please select a PDF file', true);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                document.getElementById('classifyResult').innerHTML = '<span class="loading">⏳</span> Testing classification...';
+                const response = await fetch('/test-classify', { method: 'POST', body: formData });
+                const data = await response.json();
+                showResult('classifyResult', data, !response.ok);
+            } catch (error) {
+                showResult('classifyResult', 'Error: ' + error.message, true);
+            }
+        }
+
+        async function testExtract() {
+            const fileInput = document.getElementById('extractFile');
+            const attributes = document.getElementById('attributes').value.trim();
+
+            if (!fileInput.files.length) {
+                showResult('extractResult', 'Please select a PDF file', true);
+                return;
+            }
+            if (!attributes) {
+                showResult('extractResult', 'Please enter at least one attribute', true);
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('files', fileInput.files[0]);
+            formData.append('attributes', attributes);
+            formData.append('output_format', 'json');
+
+            try {
+                document.getElementById('extractResult').innerHTML = '<span class="loading">⏳</span> Testing extraction...';
+                const response = await fetch('/extract', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                // Build detailed result
+                let resultText = '';
+                resultText += '═══════════════════════════════════════\n';
+                resultText += 'EXTRACTION RESPONSE\n';
+                resultText += '═══════════════════════════════════════\n\n';
+
+                // Check for document_validity
+                if (data.document_validity) {
+                    resultText += '✓ document_validity FOUND\n\n';
+                    resultText += 'Validity Details:\n';
+                    resultText += `  is_valid: ${data.document_validity.is_valid}\n`;
+                    resultText += `  detected_type: "${data.document_validity.detected_type}"\n`;
+                    resultText += `  confidence: "${data.document_validity.confidence}"\n`;
+                    resultText += `  message: ${data.document_validity.message}\n\n`;
+
+                    if (!data.document_validity.is_valid) {
+                        resultText += '⚠️ DOCUMENT REJECTED - Warning banner should show\n\n';
+                    } else {
+                        resultText += '✓ DOCUMENT VALID - Extraction proceeding\n\n';
+                    }
+                } else {
+                    resultText += '✗ document_validity MISSING - This is a problem!\n\n';
+                }
+
+                resultText += 'Full Response:\n';
+                resultText += JSON.stringify(data, null, 2);
+
+                document.getElementById('extractResult').style.display = 'block';
+                document.getElementById('extractResult').className = 'result ' +
+                    (data.document_validity?.is_valid ? 'warning' : 'error');
+                document.getElementById('extractResult').textContent = resultText;
+            } catch (error) {
+                showResult('extractResult', 'Error: ' + error.message, true);
+            }
+        }
+
+        async function runDiagnostics() {
+            const resultEl = document.getElementById('diagnosticsResult');
+            resultEl.style.display = 'block';
+            resultEl.className = 'result';
+            resultEl.textContent = '⏳ Running diagnostics...';
+
+            let html = '<div style="color: #1e293b;">';
+
+            // Test 1: Server health
+            try {
+                const response = await fetch('/');
+                html += '<div class="diagnostic-item ' + (response.ok ? 'pass' : 'fail') + '">';
+                html += '<strong>✓ Server Health:</strong> Server is running\n';
+                html += '</div>';
+            } catch (e) {
+                html += '<div class="diagnostic-item fail">';
+                html += '<strong>✗ Server Health:</strong> Cannot connect to server\n';
+                html += `Error: ${e.message}\n`;
+                html += '</div>';
+            }
+
+            // Test 2: API Endpoints
+            const endpoints = [
+                { name: 'Test Classification', method: 'POST', url: '/test-classify' },
+                { name: 'Extract Endpoint', method: 'POST', url: '/extract' },
+                { name: 'Summarize Endpoint', method: 'POST', url: '/summarize' },
+            ];
+
+            html += '<div style="margin-top: 15px;"><strong>API Endpoints:</strong></div>';
+            for (const ep of endpoints) {
+                try {
+                    const response = await fetch(ep.url, { method: ep.method });
+                    // 400/415 is OK - means endpoint exists but we didn't provide valid data
+                    const exists = response.status < 500;
+                    html += '<div class="diagnostic-item ' + (exists ? 'pass' : 'fail') + '">';
+                    html += `${exists ? '✓' : '✗'} <code>${ep.method}</code> ${ep.url} - ${exists ? 'Exists' : 'Not Found'} (${response.status})\n`;
+                    html += '</div>';
+                } catch (e) {
+                    html += '<div class="diagnostic-item fail">';
+                    html += `✗ <code>${ep.method}</code> ${ep.url} - Error: ${e.message}\n`;
+                    html += '</div>';
+                }
+            }
+
+            // Test 3: Frontend Integration
+            html += '<div style="margin-top: 15px;"><strong>Frontend Integration:</strong></div>';
+            const frontendChecks = [
+                { name: 'DocValidity module', check: () => typeof DocValidity !== 'undefined' },
+                { name: 'Document validity banner element', check: () => !!document.querySelector('#docValidityBanner') },
+                { name: 'Extract form element', check: () => !!document.querySelector('#extractForm') },
+                { name: 'Result form element', check: () => !!document.querySelector('#resultForm') },
+            ];
+
+            for (const check of frontendChecks) {
+                const passes = check.check();
+                html += '<div class="diagnostic-item ' + (passes ? 'pass' : 'fail') + '">';
+                html += `${passes ? '✓' : '✗'} ${check.name}\n`;
+                html += '</div>';
+            }
+
+            html += '</div>';
+            resultEl.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

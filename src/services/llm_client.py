@@ -12,36 +12,55 @@ from src.services.settings import settings
 
 def build_response_schema(attributes: list[str]) -> type[BaseModel]:
     """
-    Dynamically build a Pydantic model matching the user's requested attributes
-    plus per-field source citations.
+    Dynamically build a Pydantic model matching the new {value, source_text}
+    field shape. Every attribute maps to a FieldExtraction object so the model
+    is structurally required to provide a verbatim source quote alongside each
+    extracted value — making fabrication harder to hide.
     """
-    class SourceCitation(BaseModel):
-        pageNumber: int = Field(description="1-based PDF page number where the value appears.")
-        text: str = Field(description="Short exact source snippet from the PDF for this value.")
-        confidence: str = Field(description="Extraction confidence: high, medium, low, or unknown.")
 
-    source_fields: dict[str, Any] = {
+    class FieldExtraction(BaseModel):
+        value: str = Field(
+            description=(
+                "The extracted value exactly as stated in the document, "
+                "or 'Null' if not found."
+            )
+        )
+        source_text: str = Field(
+            description=(
+                "The verbatim phrase or sentence from the document that explicitly "
+                "states this value and names this field. Must be copied character-for-"
+                "character from the document. Use 'Null' if the value is Null."
+            )
+        )
+
+    record_fields: dict[str, Any] = {
         attr: (
-            SourceCitation,
-            Field(description=f"Source citation for {attr}. Use pageNumber 0, text 'Null', and confidence 'unknown' if not found."),
+            FieldExtraction,
+            Field(
+                description=(
+                    f"Extracted value and verbatim source quote for '{attr}'. "
+                    f"The source_text must be the exact phrase from the document "
+                    f"that labels and states this field's value."
+                )
+            ),
         )
         for attr in attributes
     }
-    SourceMetaModel = create_model("ExtractionSourceMeta", **source_fields)
-
-    record_fields: dict[str, Any] = {
-        attr: (str, Field(description=f"Extracted value for {attr}. Use 'Null' if not found."))
-        for attr in attributes
-    }
-    record_fields["source_meta"] = (
-        SourceMetaModel,
-        Field(description="Per-field source citations keyed by requested attribute name."),
-    )
     RecordModel = create_model("ExtractionRecord", **record_fields)
 
     class ExtractionResponse(BaseModel):
+        document_type: str = Field(
+            description=(
+                "Classification of the document. Must be one of: "
+                "'letter of award (loa)', 'completion certificate (cc)', "
+                "'provisional completion certificate (pcc)', 'financial closure', or 'other'."
+            )
+        )
         records: list[RecordModel] = Field(  # type: ignore[valid-type]
-            description="One object per person/entity found in the document."
+            description=(
+                "One object per person/entity/row found in the document. "
+                "Each field contains value + source_text."
+            )
         )
 
     return ExtractionResponse

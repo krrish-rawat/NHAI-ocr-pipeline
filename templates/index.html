@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PDF Data Extraction — Debarment Orders | NHAI | MoRTH</title>
-    <meta name="description" content="Official NHAI utility to extract structured contractor data from debarment order PDFs. Upload PDF notices and export data in JSON or CSV format.">
+    <title>PDF Data Extraction — Documents | NHAI | MoRTH</title>
+    <meta name="description" content="Official NHAI utility to extract structured data from Debarment Order, LOA, Appointed Date, CC, and PCC documents. Upload PDFs and export data in JSON or CSV format.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -35,7 +35,7 @@
         <ul class="gov-nav-list" role="list">
           <li><a href="#" class="gov-nav-link">Home</a></li>
           <li><a href="#" class="gov-nav-link">About</a></li>
-          <li><a href="#" class="gov-nav-link gov-nav-link--active" aria-current="page">Debarment Records</a></li>
+          <li><a href="#" class="gov-nav-link gov-nav-link--active" aria-current="page">Document Records</a></li>
           <li><a href="#" class="gov-nav-link">Help</a></li>
           <li><a href="#" class="gov-nav-link">Contact</a></li>
         </ul>
@@ -52,7 +52,7 @@
 
     <div class="page-title-band">
       <div class="content-width page-title-inner">
-        <p class="page-subtitle">Upload debarment order PDFs to extract and export structured contractor data.</p>
+        <p class="page-subtitle">Upload Debarment Order, LOA, Appointed Date, CC, or PCC documents to extract and export structured data.</p>
       </div>
     </div>
 
@@ -116,8 +116,8 @@
               <textarea id="attributes" name="attributes" required
                         class="gov-textarea"
                         aria-describedby="attributes-hint"
-                        placeholder="name&#10;dob&#10;INFRACON_ID&#10;position&#10;project_name&#10;project_state&#10;debarment_order_date&#10;effective_from&#10;effective_upto"></textarea>
-              <p id="attributes-hint" class="field-hint">Enter one attribute per line, or separate them with commas.</p>
+                        placeholder="name&#10;date&#10;reference_id&#10;project_name&#10;..."></textarea>
+              <p id="attributes-hint" class="field-hint">Enter one field name per line, or separate with commas (e.g. name, date, reference_id).</p>
             </div>
 
             <!-- Hidden format field — always JSON; format toggle removed -->
@@ -152,9 +152,12 @@
       <!-- RIGHT CARD -->
       <section class="gov-card" aria-labelledby="results-card-heading">
         <div class="gov-card-header">
-          <h2 id="results-card-heading" class="gov-card-title">Extracted Debarment Record</h2>
+          <h2 id="results-card-heading" class="gov-card-title">Extracted Document Record</h2>
         </div>
         <div class="gov-card-body gov-card-body--results">
+
+          <!-- Document validity banner — shown by JS based on API response -->
+          <div id="docValidityBanner" class="doc-validity-banner" hidden role="alert" aria-live="assertive"></div>
 
           <!-- Result form populated after extraction -->
           <form id="resultForm" class="result-form" hidden novalidate
@@ -236,9 +239,11 @@
         </div>
         <div class="pdf-modal-body">
           <div id="pdfViewerWrap" class="pdf-viewer-wrap">
-            <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
-            <div id="pdfHighlight" class="pdf-highlight" hidden></div>
-            <div id="pdfTooltip" class="source-tooltip" hidden>Source location</div>
+            <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
+              <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
+              <div id="pdfHighlight" class="pdf-highlight" hidden></div>
+              <div id="pdfTooltip" class="source-tooltip" hidden>Source location</div>
+            </div>
           </div>
           <section id="pdfFallbackContent" class="pdf-fallback-content" hidden aria-live="polite">
             <p id="pdfErrorMsg" class="pdf-error-msg"></p>

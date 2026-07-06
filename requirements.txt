@@ -9,3 +9,5 @@ google-generativeai
 PyMuPDF
 Pillow
 openpyxl
+pytesseract
+rapidfuzz
