@@ -77,9 +77,10 @@ class GeminiExtractionClient:
     def generate_json(
         self,
         prompt: str,
-        images: list[Image.Image],
+        images: list[Image.Image] | None = None,
         retries: int = settings.extraction_retries,
         response_schema: type | None = None,
+        text_context: str | None = None,
     ) -> dict[str, Any]:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not configured.")
@@ -92,10 +93,16 @@ class GeminiExtractionClient:
         if response_schema is not None:
             generation_config["response_schema"] = response_schema
 
+        # Build content array based on whether text_context is provided
+        if text_context:
+            content = [text_context + "\n\n" + prompt]
+        else:
+            content = [prompt, *(images or [])]
+
         for attempt in range(retries):
             try:
                 response = model.generate_content(
-                    [prompt, *images],
+                    content,
                     generation_config=GenerationConfig(**generation_config),
                 )
                 return json.loads(response.text)
@@ -111,18 +118,25 @@ class GeminiExtractionClient:
     def generate_text(
         self,
         prompt: str,
-        images: list[Image.Image],
+        images: list[Image.Image] | None = None,
         retries: int = settings.extraction_retries,
+        text_context: str | None = None,
     ) -> str:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not configured.")
 
         model = genai.GenerativeModel(self.model_name)
 
+        # Build content array based on whether text_context is provided
+        if text_context:
+            content = [text_context + "\n\n" + prompt]
+        else:
+            content = [prompt, *(images or [])]
+
         for attempt in range(retries):
             try:
                 response = model.generate_content(
-                    [prompt, *images],
+                    content,
                     generation_config=GenerationConfig(
                         temperature=0.0,
                     ),

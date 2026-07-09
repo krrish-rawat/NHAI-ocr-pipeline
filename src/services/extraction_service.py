@@ -298,8 +298,35 @@ def _build_bbox_for_source_text(
 
 
 # ---------------------------------------------------------------------------
-# Attribute normalisation & prompt
+# Attribute normalisation & prompts
 # ---------------------------------------------------------------------------
+
+# Classification prompt for TEXT-based input (Mistral OCR structured text)
+CLASSIFICATION_PROMPT_TEXT = """
+You are analyzing structured OCR text extracted from a government document.
+Your ONLY task is to classify the document type.
+
+The full document text (structured OCR text) is provided above. Examine it carefully and identify which type it is.
+
+Choose EXACTLY ONE from this list:
+- "letter of award (loa)" - if this is a contract award letter
+- "completion certificate (cc)" - if this is a completion certificate (not provisional)
+- "provisional completion certificate (pcc)" - if this is a provisional completion certificate
+- "financial closure" - if this is a financial closure document
+- "debarment records" - if this is a debarment, blacklisting, or restriction from participation document
+- "other" - if it does not match any of the above types
+
+Return ONLY the classification string, nothing else. No explanation, no JSON, just the type string.
+
+Examples:
+- If you see "Letter of Award" or "LOA" in the text → return "letter of award (loa)"
+- If you see "Completion Certificate" with "Provisional" → return "provisional completion certificate (pcc)"
+- If you see "Completion Certificate" without "Provisional" → return "completion certificate (cc)"
+- If you see "Financial Closure" → return "financial closure"
+- If you see "Restriction for Participation", "Debarment", "Blacklisted", or "not allowed to participate" → return "debarment records"
+- If it's an invoice, purchase order, or other document → return "other"
+"""
+
 
 def normalize_attributes(raw_attributes: str | list[str]) -> list[str]:
     if isinstance(raw_attributes, str):
@@ -324,6 +351,7 @@ def normalize_attributes(raw_attributes: str | list[str]) -> list[str]:
 
 
 def build_dynamic_prompt(attributes: list[str]) -> str:
+    """Build extraction prompt for IMAGE-based input (fallback path)."""
     fields = "\n".join(f"- {attribute}" for attribute in attributes)
 
     return f"""
@@ -375,16 +403,99 @@ Additionally, classify the type of document being analyzed. Choose EXACTLY ONE f
 - "completion certificate (cc)"
 - "provisional completion certificate (pcc)"
 - "financial closure"
+- "debarment records"
 - "other"
 
 Return strict JSON only, with this exact shape:
 {{
-  "document_type": "your classification here (one of the 5 types above)",
+  "document_type": "your classification here (one of the 6 types above)",
   "records": [
     {{
       "attribute_name": {{
         "value": "extracted value or Null",
         "source_text": "verbatim phrase from document that states this value, or Null"
+      }}
+    }}
+  ]
+}}
+
+The document_type must appear at the root level of the JSON (sibling to "records").
+Every attribute key must appear in every record. Do not add any keys outside "document_type" and "records".
+Do not include markdown, explanations, or comments.
+"""
+
+
+def build_dynamic_prompt_text(attributes: list[str]) -> str:
+    """Build extraction prompt for TEXT-based input (Mistral OCR structured text).
+    
+    This variant is identical to build_dynamic_prompt but adapted for structured
+    OCR text instead of images, while maintaining all grounding rules.
+    """
+    fields = "\n".join(f"- {attribute}" for attribute in attributes)
+
+    return f"""
+You are a precise data extractor for official government documents.
+The structured OCR text extracted from the document is provided above. The document may contain English, Hindi, tables, merged cells, scanned content, or appended letters.
+
+═══════════════════════════════════════════════════
+STRICT GROUNDING RULES — READ CAREFULLY
+═══════════════════════════════════════════════════
+1. Extract ONLY values that are explicitly and unambiguously stated in the structured OCR text above.
+   Do NOT infer, calculate, estimate, or supply values from outside knowledge.
+
+2. This document may contain many similar values (e.g. 7+ distinct dates, multiple
+   names, several amounts). You MUST match each field strictly to the sentence or
+   clause in the structured OCR text that explicitly labels it. The label in the text must directly name
+   or describe that field — do NOT borrow a value from a different clause even if
+   the value looks plausible.
+   Examples of incorrect attribution:
+   - Using an EOT date, completion date, or notice-to-proceed date for "Agreement Made Date"
+   - Using a work-order date for "Contract Award Date"
+   - Using one party's name for another party's field
+   Always ask: "Does the structured OCR text itself say this value belongs to this field?"
+
+3. For every extracted field you MUST return the shortest exact phrase or sentence
+   from the structured OCR text that directly states the value AND names the field — this is the
+   source_text. The source_text must be verbatim or near-verbatim from the structured OCR text.
+   It will be searched and highlighted in the original PDF, so accuracy is critical.
+
+4. If no explicit statement in the structured OCR text supports a field, return:
+   value: "Null"
+   source_text: "Null"
+   Never fabricate a plausible-looking value. If you are uncertain, return Null.
+
+5. Dates: preserve the format exactly as written in the structured OCR text unless the intended format is
+   unambiguous (e.g. "23rd March 2021" → "2021-03-23" is acceptable; otherwise
+   return as written). For compound date values (e.g. "13.03.2025 & 02.07.2025"),
+   return the full compound string exactly as it appears.
+
+6. Multiple records: if a table in the structured OCR text lists multiple people/entities/rows, return one
+   record object per row. Apply shared header context (headings, merged cells) to
+   every row.
+
+7. Ground all extracted values against the structured OCR text provided above. Ensure each value
+   can be traced back to a specific phrase in that text.
+═══════════════════════════════════════════════════
+
+Extract the following fields:
+{fields}
+
+Additionally, classify the type of document being analyzed. Choose EXACTLY ONE from this list:
+- "letter of award (loa)"
+- "completion certificate (cc)"
+- "provisional completion certificate (pcc)"
+- "financial closure"
+- "debarment records"
+- "other"
+
+Return strict JSON only, with this exact shape:
+{{
+  "document_type": "your classification here (one of the 6 types above)",
+  "records": [
+    {{
+      "attribute_name": {{
+        "value": "extracted value or Null",
+        "source_text": "verbatim phrase from structured OCR text that states this value, or Null"
       }}
     }}
   ]
@@ -542,6 +653,9 @@ _ACCEPTED_DOC_PATTERNS: list[str] = [
     "financial closure",
     "debarment records",
     "debarment of individuals",
+    "restriction for participation",
+    "blacklisting",
+    "blacklisted",
     # Abbreviated / partial
     "letter of award",
     "financial closure",
@@ -551,10 +665,11 @@ _ACCEPTED_DOC_PATTERNS: list[str] = [
     "provisional cc",
     "provisional pcc",
     "debarment",
+    "restriction",
 ]
 
 # Single-word tokens that are unambiguously valid when standalone
-_ACCEPTED_DOC_TOKENS: frozenset[str] = frozenset(["loa", "cc", "pcc", "debarment"])
+_ACCEPTED_DOC_TOKENS: frozenset[str] = frozenset(["loa", "cc", "pcc", "debarment", "restriction", "blacklisting"])
 
 
 def _is_accepted_doc_type(raw_type: str) -> bool:
@@ -586,6 +701,7 @@ def _is_accepted_doc_type(raw_type: str) -> bool:
 class ExtractionService:
     renderer: PdfRenderer
     llm_client: GeminiExtractionClient
+    mistral_ocr: Any = None  # MistralOcrClient | None — None means feature off
 
     # ------------------------------------------------------------------
     # Internal: OCR index (run once per document at ingestion time)
@@ -616,19 +732,31 @@ class ExtractionService:
     def classify_document(
         self,
         pdf_path: str,
+        text_context: str | None = None,
     ) -> str:
         """Quick document classification without field extraction.
         
         This is a lightweight operation that only asks Gemini to identify
         the document type. Much faster and cheaper than full extraction.
         
+        When text_context is provided (Mistral OCR path), sends text only.
+        Otherwise falls back to image-based classification.
+        
         Returns:
             Document type string (e.g., "letter of award (loa)", "invoice", "other")
         """
-        images = self.renderer.render_to_images(pdf_path)
-        
-        # Lightweight classification-only prompt
-        prompt = """
+        try:
+            if text_context:
+                # Text-based classification (fast — no image upload)
+                doc_type = self.llm_client.generate_text(
+                    CLASSIFICATION_PROMPT_TEXT, text_context=text_context
+                )
+            else:
+                # Image-based classification (fallback)
+                images = self.renderer.render_to_images(pdf_path)
+                
+                # Lightweight classification-only prompt
+                prompt = """
 You are analyzing a government document image. Your ONLY task is to classify the document type.
 
 Examine the document carefully and identify which type it is. Choose EXACTLY ONE from this list:
@@ -636,6 +764,7 @@ Examine the document carefully and identify which type it is. Choose EXACTLY ONE
 - "completion certificate (cc)" - if this is a completion certificate (not provisional)
 - "provisional completion certificate (pcc)" - if this is a provisional completion certificate
 - "financial closure" - if this is a financial closure document
+- "debarment records" - if this is a debarment, blacklisting, or restriction from participation document
 - "other" - if it does not match any of the above types
 
 Return ONLY the classification string, nothing else. No explanation, no JSON, just the type string.
@@ -645,12 +774,11 @@ Examples:
 - If you see "Completion Certificate" with "Provisional" → return "provisional completion certificate (pcc)"
 - If you see "Completion Certificate" without "Provisional" → return "completion certificate (cc)"
 - If you see "Financial Closure" → return "financial closure"
+- If you see "Restriction for Participation", "Debarment", "Blacklisted", or "not allowed to participate" → return "debarment records"
 - If it's an invoice, purchase order, or other document → return "other"
 """
-        
-        try:
-            # Simple text generation, no structured output needed
-            doc_type = self.llm_client.generate_text(prompt, images)
+                doc_type = self.llm_client.generate_text(prompt, images)
+            
             return doc_type.strip().lower()
         except Exception as exc:
             logger.error(f"Document classification failed: {exc}")
@@ -661,8 +789,12 @@ Examples:
         pdf_path: str,
         attributes: list[str],
         ocr_index: OcrIndex | None = None,
+        text_context: str | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
         """Extract records and document type from PDF.
+        
+        When text_context is provided (Mistral OCR path), sends text only.
+        Otherwise falls back to image-based extraction.
         
         Returns:
             (document_type, records) tuple.
@@ -670,10 +802,18 @@ Examples:
         if not attributes:
             raise ValueError("At least one extraction attribute is required.")
 
-        images = self.renderer.render_to_images(pdf_path)
-        prompt = build_dynamic_prompt(attributes)
-        schema = build_response_schema(attributes)
-        data = self.llm_client.generate_json(prompt, images, response_schema=schema)
+        if text_context:
+            # Text-based extraction (fast — no image upload)
+            prompt = build_dynamic_prompt_text(attributes)
+            schema = build_response_schema(attributes)
+            data = self.llm_client.generate_json(prompt, text_context=text_context, response_schema=schema)
+        else:
+            # Image-based extraction (fallback)
+            images = self.renderer.render_to_images(pdf_path)
+            prompt = build_dynamic_prompt(attributes)
+            schema = build_response_schema(attributes)
+            data = self.llm_client.generate_json(prompt, images, response_schema=schema)
+
         document_type, records = _coerce_records(data, attributes, ocr_index)
 
         if not records:
@@ -686,18 +826,42 @@ Examples:
         pdf_path: str,
         source_file: str,
         attributes: list[str],
+        skip_validation: bool = False,
     ) -> dict[str, Any]:
         """Full ingestion pipeline for one document with PRE-EXTRACTION validation.
 
-        PHASE 1: Quick document classification (fast, lightweight)
+        PHASE 0: Mistral OCR (if configured) — extract structured text once
+        PHASE 1: Quick document classification (fast, lightweight) — skipped if skip_validation=True
         PHASE 2: Only runs full extraction if Phase 1 passes validation
         
         This saves time and API costs by aborting early for invalid documents.
+        Falls back to image-based pipeline if Mistral OCR fails or returns <50 chars.
         
         Returns:
             Dictionary with "records" (list) and "document_validity" (dict).
         """
         try:
+            # ═══════════════════════════════════════════════════════════════
+            # PHASE 0: MISTRAL OCR (once for entire request)
+            # ═══════════════════════════════════════════════════════════════
+            structured_text: str | None = None
+            if self.mistral_ocr is not None:
+                try:
+                    structured_text = self.mistral_ocr.extract_text(pdf_path)
+                    if len(structured_text) < 50:
+                        logger.warning(
+                            "Mistral OCR returned only %d chars, falling back to images",
+                            len(structured_text),
+                        )
+                        structured_text = None
+                except Exception as exc:
+                    logger.warning(
+                        "Mistral OCR failed (%s: %s), falling back to images",
+                        type(exc).__name__,
+                        exc,
+                    )
+                    structured_text = None
+
             # ═══════════════════════════════════════════════════════════════
             # PHASE 1: QUICK CLASSIFICATION (Pre-Extraction Gate)
             # ═══════════════════════════════════════════════════════════════
@@ -705,14 +869,18 @@ Examples:
             logger.info(f"PHASE 1 START: Classifying document: {source_file}")
             logger.info(f"{'='*70}\n")
             
-            document_type = self.classify_document(pdf_path)
-            is_valid = _is_accepted_doc_type(document_type)
+            if skip_validation:
+                logger.info("Phase 1 SKIPPED (skip_validation=True)")
+                document_type = "forced extraction"
+                is_valid = True
+            else:
+                document_type = self.classify_document(pdf_path, text_context=structured_text)
+                is_valid = _is_accepted_doc_type(document_type)
             
             logger.info(f"\n>>> Phase 1 Classification Result <<<")
             logger.info(f"  Document Type: '{document_type}'")
             logger.info(f"  Is Valid: {is_valid}")
-            logger.info(f"  Accepted Patterns: {_ACCEPTED_DOC_PATTERNS}")
-            logger.info(f"  Accepted Tokens: {_ACCEPTED_DOC_TOKENS}\n")
+            logger.info(f"  OCR Path: {'Mistral text' if structured_text else 'Images'}\n")
             
             # BUILD EARLY ABORT RESPONSE if invalid
             if not is_valid:
@@ -750,15 +918,19 @@ Examples:
             # ═══════════════════════════════════════════════════════════════
             logger.info(f"\n{'='*70}")
             logger.info(f"PHASE 2 START: Document validated, proceeding with extraction")
+            logger.info(f"  Path: {'Mistral text' if structured_text else 'Images (fallback)'}")
             logger.info(f"{'='*70}\n")
             
-            # ① Run OCR once at document-ingestion time and cache the index.
-            ocr_index = self._get_or_build_ocr_index(pdf_path)
+            # ① Run Tesseract OCR for bbox/source_meta only on image fallback path.
+            # When Mistral OCR provides structured text, skip Tesseract to save ~3s.
+            ocr_index = None
+            if not structured_text:
+                ocr_index = self._get_or_build_ocr_index(pdf_path)
 
-            # ② LLM extraction — returns (document_type, records) tuple
-            # Note: document_type from full extraction might differ slightly from
-            # quick classification, but we already validated so we proceed.
-            extraction_doc_type, records = self.extract_from_pdf(pdf_path, attributes, ocr_index)
+            # ② LLM extraction — uses text_context when available, images otherwise
+            extraction_doc_type, records = self.extract_from_pdf(
+                pdf_path, attributes, ocr_index, text_context=structured_text
+            )
             
             # Use the quick classification result for consistency
             document_validity = {
@@ -814,7 +986,34 @@ Examples:
 
 
 def build_extraction_service() -> ExtractionService:
+    from src.services.settings import settings
+
+    mistral_ocr = None
+    if settings.use_mistral_ocr:
+        if not settings.mistral_api_key:
+            raise ValueError(
+                "MISTRAL_API_KEY must be set when USE_MISTRAL_OCR is enabled. "
+                "Either set MISTRAL_API_KEY in your environment or set USE_MISTRAL_OCR=false."
+            )
+        from src.services.mistral_ocr_client import MistralOcrClient
+        mistral_ocr = MistralOcrClient(
+            api_key=settings.mistral_api_key,
+            model=settings.mistral_ocr_model,
+        )
+
+    # Use Mistral LLM when configured, otherwise fall back to Gemini
+    if settings.use_mistral_llm and settings.mistral_api_key:
+        from src.services.mistral_llm_client import MistralLLMClient
+        llm_client = MistralLLMClient(
+            api_key=settings.mistral_api_key,
+            model=settings.mistral_llm_model,
+            extraction_model=settings.mistral_extraction_model,
+        )
+    else:
+        llm_client = GeminiExtractionClient()
+
     return ExtractionService(
         renderer=PdfRenderer(),
-        llm_client=GeminiExtractionClient(),
+        llm_client=llm_client,
+        mistral_ocr=mistral_ocr,
     )

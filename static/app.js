@@ -140,16 +140,49 @@ const DocValidity = (() => {
       });
 
       // Wire the "Force Extract Anyway" button to dismiss banner and show results
-      document.getElementById("bannerForceExtractBtn").addEventListener("click", () => {
+      document.getElementById("bannerForceExtractBtn").addEventListener("click", async () => {
         _clear();
-        // Re-trigger result rendering if results were suppressed
-        if (resultForm.hidden) {
-          resultForm.hidden = false;
-          resultForm.scrollIntoView({ behavior: "smooth", block: "start" });
+
+        // Re-submit extraction with skip_validation=true
+        const formData = new FormData(extractForm);
+        const attributes = String(formData.get("attributes") || "").trim();
+        if (!selectedFiles.length || !attributes) return;
+
+        const payload = new FormData();
+        selectedFiles.forEach((f) => payload.append("files", f));
+        payload.append("attributes", attributes);
+        payload.append("output_format", "json");
+        payload.append("skip_validation", "true");
+
+        setBusy(true);
+        Progress.start(10000);
+        setMessage("Force extracting — skipping validation...");
+
+        try {
+          const response = await fetch("/extract", { method: "POST", body: payload });
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `Request failed: ${response.status}`);
+          }
+          const data = await response.json();
+          const records = Array.isArray(data.records) ? data.records : [data];
+
+          // Attach PDF URLs
+          const pdfObjectUrls = {};
+          selectedFiles.forEach((f) => { pdfObjectUrls[f.name] = URL.createObjectURL(f); });
+          records.forEach((rec) => {
+            rec._pdfUrl = pdfObjectUrls[rec.source_file] || Object.values(pdfObjectUrls)[0] || null;
+          });
+
+          Progress.done();
+          showResultPanel(records, records[0]?._pdfUrl ?? null);
+          setMessage("");
+        } catch (error) {
+          Progress.error();
+          setMessage(error.message || "Force extraction failed.", "error");
+        } finally {
+          setBusy(false);
         }
-        // Also generate summary now since user chose to proceed
-        summaryRequestId += 1;
-        summarizeSelectedFiles(summaryRequestId);
       });
 
       return false;   // suppress results
@@ -988,6 +1021,13 @@ function showResultPanel(records, pdfUrl) {
   allRecords   = records;
   currentIndex = 0;
 
+  // Show the results card container (hidden by default)
+  const resultsCard = document.getElementById("resultsCard");
+  if (resultsCard) {
+    resultsCard.hidden = false;
+    resultsCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   resultForm.hidden = false;
   if (pdfUrl) resultForm.dataset.pdfUrl = pdfUrl;
 
@@ -1208,3 +1248,128 @@ extractForm.addEventListener("submit", async (event) => {
     setBusy(false);
   }
 });
+
+
+// ─── Hindi/English Language Toggle ───────────────────────────────────────────
+const LangToggle = (() => {
+  const translations = {
+    en: {
+      toggleLabel: "हिंदी",
+      uploadHeading: "Step 1 — Upload Documents",
+      resultsHeading: "Extracted Document Record",
+      summaryHeading: "PDF Summary Dashboard",
+      fileLabel: "PDF Files",
+      dropPrimary: "Click to select or drag & drop PDF files",
+      dropSecondary: "Supported format: PDF  |  Max size: 25 MB per file",
+      attrLabel: "Extraction Fields",
+      attrHint: "Enter one field name per line, or separate with commas (e.g. name, date, reference_id).",
+      extractBtn: "Extract Data",
+      summaryEmpty: "No document summary yet",
+      summarySub: "A high-level PDF overview will appear after upload.",
+      identityText: "भारत सरकार | Government of India",
+      navLinks: ["Home", "About", "Document Records", "Help", "Contact"],
+      brandTitle: "NHAI",
+      brandSubtitle: "National Highways Authority of India",
+    },
+    hi: {
+      toggleLabel: "English",
+      uploadHeading: "चरण 1 — दस्तावेज़ अपलोड करें",
+      resultsHeading: "निकाले गए दस्तावेज़ रिकॉर्ड",
+      summaryHeading: "पीडीएफ सारांश डैशबोर्ड",
+      fileLabel: "पीडीएफ फाइलें",
+      dropPrimary: "पीडीएफ फाइलें चुनने के लिए क्लिक करें या ड्रैग और ड्रॉप करें",
+      dropSecondary: "समर्थित प्रारूप: PDF  |  अधिकतम आकार: 25 MB प्रति फाइल",
+      attrLabel: "निष्कर्षण फ़ील्ड",
+      attrHint: "प्रति पंक्ति एक फ़ील्ड नाम दर्ज करें, या अल्पविराम से अलग करें।",
+      extractBtn: "डेटा निकालें",
+      summaryEmpty: "अभी तक कोई दस्तावेज़ सारांश नहीं",
+      summarySub: "अपलोड के बाद पीडीएफ का अवलोकन यहां दिखाई देगा।",
+      identityText: "भारत सरकार | Government of India",
+      navLinks: ["मुखपृष्ठ", "हमारे बारे में", "दस्तावेज़ रिकॉर्ड", "सहायता", "संपर्क"],
+      brandTitle: "NHAI",
+      brandSubtitle: "राष्ट्रीय राजमार्ग प्राधिकरण",
+    },
+  };
+
+  let currentLang = "en";
+
+  function apply(lang) {
+    currentLang = lang;
+    const t = translations[lang];
+    const toggle = document.getElementById("langToggle");
+    if (toggle) toggle.textContent = t.toggleLabel;
+
+    // Nav brand
+    const brandTitle = document.querySelector(".gov-brand-title");
+    if (brandTitle) brandTitle.textContent = t.brandTitle;
+    const brandSub = document.querySelector(".gov-brand-subtitle");
+    if (brandSub) brandSub.textContent = t.brandSubtitle;
+
+    // Nav links
+    const navLinks = document.querySelectorAll(".gov-nav-link");
+    if (navLinks.length && t.navLinks) {
+      navLinks.forEach((link, i) => {
+        if (t.navLinks[i]) link.textContent = t.navLinks[i];
+      });
+    }
+
+    // Card headings
+    const uploadH = document.getElementById("upload-card-heading");
+    if (uploadH) uploadH.textContent = t.uploadHeading;
+    const resultsH = document.getElementById("results-card-heading");
+    if (resultsH) resultsH.textContent = t.resultsHeading;
+    const summaryH = document.getElementById("summary-card-heading");
+    if (summaryH) summaryH.textContent = t.summaryHeading;
+
+    // File label
+    const fileLabel = document.querySelector('label[for="files"]');
+    if (fileLabel) fileLabel.textContent = t.fileLabel;
+
+    // Dropzone text
+    const dropP = document.querySelector(".dropzone-primary");
+    if (dropP) dropP.textContent = t.dropPrimary;
+    const dropS = document.querySelector(".dropzone-secondary");
+    if (dropS) dropS.textContent = t.dropSecondary;
+
+    // Attributes label & hint
+    const attrLabel = document.querySelector('label[for="attributes"]');
+    if (attrLabel) attrLabel.textContent = t.attrLabel;
+    const attrHint = document.getElementById("attributes-hint");
+    if (attrHint) attrHint.textContent = t.attrHint;
+
+    // Extract button
+    const btnLbl = document.getElementById("btnLabel");
+    if (btnLbl && !submitButton.disabled) btnLbl.textContent = t.extractBtn;
+
+    // Summary empty state
+    const seTitle = document.querySelector(".summary-empty-title");
+    if (seTitle) seTitle.textContent = t.summaryEmpty;
+    const seSub = document.querySelector(".summary-empty-sub");
+    if (seSub) seSub.textContent = t.summarySub;
+
+    // Identity bar
+    const idText = document.querySelector(".gov-identity-text");
+    if (idText) idText.textContent = t.identityText;
+
+    // Update html lang attribute
+    document.documentElement.lang = lang === "hi" ? "hi" : "en";
+  }
+
+  function init() {
+    const toggle = document.getElementById("langToggle");
+    if (!toggle) { console.warn("[Lang] langToggle button not found"); return; }
+    toggle.addEventListener("click", () => {
+      apply(currentLang === "en" ? "hi" : "en");
+    });
+    console.debug("[Lang] Toggle initialized, currentLang:", currentLang);
+  }
+
+  return { init };
+})();
+
+// Initialize when DOM is ready (in case script loads before page title element)
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => LangToggle.init());
+} else {
+  LangToggle.init();
+}

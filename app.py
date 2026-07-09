@@ -68,6 +68,7 @@ async def _save_upload_to_temp_pdf(upload: UploadFile) -> str:
 async def _process_single_upload(
     upload: UploadFile,
     requested_attributes: list[str],
+    skip_validation: bool = False,
 ) -> dict[str, object]:
     """Save one upload to a temp file, extract, then clean up.
     
@@ -83,6 +84,7 @@ async def _process_single_upload(
             temp_path,
             source_file,
             requested_attributes,
+            skip_validation,
         )
     except Exception as exc:
         return {
@@ -148,6 +150,7 @@ async def extract(
     files: list[UploadFile] = File(...),
     attributes: str = Form(...),
     output_format: str = Form("json"),
+    skip_validation: str = Form("false"),
 ):
     requested_attributes = normalize_attributes(attributes)
     if not requested_attributes:
@@ -161,8 +164,9 @@ async def extract(
 
     # All files are saved and dispatched to the thread pool concurrently so
     # N PDFs take ~the time of the slowest single file, not N × that time.
+    should_skip_validation = skip_validation.lower() in ("true", "1", "yes")
     results: list[dict[str, object]] = await asyncio.gather(
-        *[_process_single_upload(upload, requested_attributes) for upload in files]
+        *[_process_single_upload(upload, requested_attributes, should_skip_validation) for upload in files]
     )
 
     # Merge results: collect all records and use the first file's document_validity

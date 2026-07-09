@@ -8,11 +8,28 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/jpeg" href="{{ url_for('static', path='/nhai-logo.jpg') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', path='/nhai-logo.jpg') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
   </head>
   <body>
+
+    <!-- Government Identity Bar (like india.gov.in) -->
+    <div class="gov-identity-bar" role="banner">
+      <div class="content-width gov-identity-inner">
+        <span class="gov-identity-left">
+          <img src="https://india.gov.in/sites/default/files/emblem-dark.png" alt="National Emblem" class="gov-emblem" onerror="this.style.display='none'">
+          <span class="gov-identity-text">भारत सरकार | Government of India</span>
+        </span>
+        <span class="gov-identity-right">
+          <a href="https://morth.nic.in" target="_blank" rel="noopener" class="gov-identity-link">MoRTH</a>
+          <span class="gov-identity-sep">|</span>
+          <a href="https://nhai.gov.in" target="_blank" rel="noopener" class="gov-identity-link">NHAI Portal</a>
+          <span class="gov-identity-sep">|</span>
+          <button type="button" id="langToggle" class="gov-identity-link lang-toggle-btn" aria-label="Switch language to Hindi">हिंदी</button>
+        </span>
+      </div>
+    </div>
 
     <!-- Skip to main content (accessibility) -->
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -20,10 +37,10 @@
     <nav class="gov-nav" aria-label="Primary navigation">
       <div class="gov-nav-inner">
         <a href="#" class="gov-brand" aria-label="NHAI home">
-          <img class="gov-brand-logo" src="{{ url_for('static', path='/nhai-logo.jpg') }}" alt="NHAI logo">
+          <img class="gov-brand-logo" src="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}" alt="NHAI logo">
           <span class="gov-brand-text">
             <span class="gov-brand-title">NHAI</span>
-            <span class="gov-brand-subtitle">Ministry of Road Transport &amp; Highways</span>
+            <span class="gov-brand-subtitle">National Highways Authority of India</span>
           </span>
         </a>
         <input id="navToggle" class="nav-toggle" type="checkbox" aria-label="Toggle navigation menu">
@@ -44,17 +61,9 @@
             <span class="status-dot" aria-hidden="true"></span>
             <span class="status-text">Operational</span>
           </div>
-          <button type="button" class="nav-icon-btn" aria-label="Settings">⚙️</button>
-          <button type="button" class="nav-icon-btn" aria-label="Profile">👤</button>
         </div>
       </div>
     </nav>
-
-    <div class="page-title-band">
-      <div class="content-width page-title-inner">
-        <p class="page-subtitle">Upload Debarment Order, LOA, Appointed Date, CC, or PCC documents to extract and export structured data.</p>
-      </div>
-    </div>
 
     <!-- Main content -->
     <main id="main-content" class="content-width workspace" aria-label="PDF extraction workspace">
@@ -112,7 +121,7 @@
 
             <!-- Attributes — empty textarea with placeholder only -->
             <div class="field-block">
-              <label class="field-label" for="attributes">Which fields should we extract?</label>
+              <label class="field-label" for="attributes">Extraction Fields</label>
               <textarea id="attributes" name="attributes" required
                         class="gov-textarea"
                         aria-describedby="attributes-hint"
@@ -149,15 +158,15 @@
         </div>
       </section>
 
-      <!-- RIGHT CARD -->
-      <section class="gov-card" aria-labelledby="results-card-heading">
+      <!-- Document validity banner — shown independently above results -->
+      <div id="docValidityBanner" class="doc-validity-banner" hidden role="alert" aria-live="assertive"></div>
+
+      <!-- RESULTS CARD (hidden until extraction completes) -->
+      <section class="gov-card results-card" aria-labelledby="results-card-heading" id="resultsCard" hidden>
         <div class="gov-card-header">
           <h2 id="results-card-heading" class="gov-card-title">Extracted Document Record</h2>
         </div>
         <div class="gov-card-body gov-card-body--results">
-
-          <!-- Document validity banner — shown by JS based on API response -->
-          <div id="docValidityBanner" class="doc-validity-banner" hidden role="alert" aria-live="assertive"></div>
 
           <!-- Result form populated after extraction -->
           <form id="resultForm" class="result-form" hidden novalidate
@@ -222,8 +231,8 @@
       </div>
     </footer>
 
-    <!-- PDF Citation Modal -->
-    <div id="pdfModal" class="pdf-modal-overlay" hidden aria-modal="true" role="dialog" aria-label="PDF Source Viewer">
+    <!-- PDF Citation Modal (disabled) -->
+    <div id="pdfModal" class="pdf-modal-overlay" hidden aria-modal="true" role="dialog" aria-label="PDF Source Viewer" style="display:none">>
       <div class="pdf-modal">
         <div class="pdf-modal-header">
           <span class="pdf-modal-title" id="pdfModalTitle">Source Document</span>
