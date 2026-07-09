@@ -1,13 +1,17 @@
+from __future__ import annotations
+
 import json
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import google.generativeai as genai
-from google.generativeai.types import GenerationConfig
-from PIL import Image
 from pydantic import BaseModel, Field, create_model
 
 from src.services.settings import settings
+
+if TYPE_CHECKING:
+    # Imported only for type checking; avoids loading heavy deps at runtime
+    # when Gemini is not the active provider (all-Mistral path).
+    from PIL import Image
 
 
 def build_response_schema(attributes: list[str]) -> type[BaseModel]:
@@ -72,18 +76,24 @@ class GeminiExtractionClient:
     def __init__(self, model_name: str = settings.model_name, api_key: str | None = settings.gemini_api_key) -> None:
         self.model_name = model_name
         self.api_key = api_key
+        # Lazy import — only load Gemini SDK when this client is actually used,
+        # so the all-Mistral path doesn't pay the import cost or emit warnings.
+        import google.generativeai as genai
         genai.configure(api_key=api_key)
 
     def generate_json(
         self,
         prompt: str,
-        images: list[Image.Image] | None = None,
+        images: "list[Image.Image] | None" = None,
         retries: int = settings.extraction_retries,
         response_schema: type | None = None,
         text_context: str | None = None,
     ) -> dict[str, Any]:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not configured.")
+
+        import google.generativeai as genai
+        from google.generativeai.types import GenerationConfig
 
         model = genai.GenerativeModel(self.model_name)
         generation_config: dict[str, Any] = {
@@ -118,12 +128,15 @@ class GeminiExtractionClient:
     def generate_text(
         self,
         prompt: str,
-        images: list[Image.Image] | None = None,
+        images: "list[Image.Image] | None" = None,
         retries: int = settings.extraction_retries,
         text_context: str | None = None,
     ) -> str:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY is not configured.")
+
+        import google.generativeai as genai
+        from google.generativeai.types import GenerationConfig
 
         model = genai.GenerativeModel(self.model_name)
 

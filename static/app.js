@@ -54,6 +54,23 @@ let summaryRequestId = 0;
 // Tracks the current FileList-compatible array for submission
 let selectedFiles = [];
 
+// Tracks object URLs created for uploaded PDFs so they can be revoked,
+// preventing memory leaks over a long session with many uploads.
+let activeObjectUrls = [];
+
+function createTrackedObjectUrls(files) {
+  // Revoke any previously created URLs before creating a fresh batch.
+  activeObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  activeObjectUrls = [];
+  const map = {};
+  files.forEach((f) => {
+    const url = URL.createObjectURL(f);
+    map[f.name] = url;
+    activeObjectUrls.push(url);
+  });
+  return map;
+}
+
 // ─── Document Validity Banner ─────────────────────────────────────────────────
 /**
  * Handles the document_validity object returned by the extraction API.
@@ -167,9 +184,8 @@ const DocValidity = (() => {
           const data = await response.json();
           const records = Array.isArray(data.records) ? data.records : [data];
 
-          // Attach PDF URLs
-          const pdfObjectUrls = {};
-          selectedFiles.forEach((f) => { pdfObjectUrls[f.name] = URL.createObjectURL(f); });
+          // Attach PDF URLs (tracked so they can be revoked later)
+          const pdfObjectUrls = createTrackedObjectUrls(selectedFiles);
           records.forEach((rec) => {
             rec._pdfUrl = pdfObjectUrls[rec.source_file] || Object.values(pdfObjectUrls)[0] || null;
           });
@@ -1157,11 +1173,9 @@ extractForm.addEventListener("submit", async (event) => {
   Progress.start(25000); // estimate 25 s; bar self-adjusts
   setMessage("Validating document type and processing PDFs...");
 
-  // Create object URLs for the uploaded files so citation modal can load them later.
-  const pdfObjectUrls = {};
-  selectedFiles.forEach((f) => {
-    pdfObjectUrls[f.name] = URL.createObjectURL(f);
-  });
+  // Create object URLs for the uploaded files so citation modal can load them
+  // later (tracked so previous URLs are revoked and don't leak memory).
+  const pdfObjectUrls = createTrackedObjectUrls(selectedFiles);
 
   try {
     const response = await fetch("/extract", { method: "POST", body: payload });

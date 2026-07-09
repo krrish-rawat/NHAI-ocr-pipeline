@@ -1,12 +1,25 @@
 import asyncio
 import json
+import logging
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger("nhai.app")
+
+
+def _safe_error_message(exc: Exception) -> str:
+    """Return a user-safe error message without leaking internal details.
+
+    Full exception detail is logged server-side; the client only sees a
+    generic message plus the exception type name.
+    """
+    return f"Processing failed ({type(exc).__name__}). Please try again or contact support."
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -23,6 +36,11 @@ from src.services.settings import settings
 from src.services.summary_service import build_summary_service
 
 BASE_DIR = Path(__file__).resolve().parent
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
 
 app = FastAPI(title="NHAI PDF Parser")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -75,6 +93,7 @@ async def _process_single_upload(
     Returns a dict with "records" and "document_validity" keys.
     """
     source_file = upload.filename or "uploaded.pdf"
+    req_id = uuid.uuid4().hex[:8]
     temp_path = ""
     try:
         _validate_pdf_upload(upload)
@@ -86,7 +105,12 @@ async def _process_single_upload(
             requested_attributes,
             skip_validation,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
+        # Log full detail server-side; return sanitized message to client.
+        logger.error("[%s] Upload processing failed for %s: %s", req_id, source_file, exc, exc_info=True)
+        safe_msg = _safe_error_message(exc)
         return {
             "records": [
                 {
@@ -97,14 +121,14 @@ async def _process_single_upload(
                         for attr in requested_attributes
                     },
                     "status": "Failed",
-                    "failure_reason": str(exc),
+                    "failure_reason": safe_msg,
                 }
             ],
             "document_validity": {
                 "is_valid": False,
                 "detected_type": "Error",
                 "confidence": "high",
-                "message": f"Upload processing failed: {str(exc)}",
+                "message": safe_msg,
             },
         }
     finally:

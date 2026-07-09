@@ -9,9 +9,13 @@ import logging
 import time
 from typing import Any
 
+from src.services.mistral_common import API_TIMEOUT_SECONDS, import_mistral
 from src.services.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Chat completions can take longer than OCR; allow a more generous timeout.
+_CHAT_TIMEOUT_SECONDS = 30
 
 
 class MistralLLMClient:
@@ -26,20 +30,17 @@ class MistralLLMClient:
         self.api_key = api_key or settings.mistral_api_key
         self.model = model
         self.extraction_model = extraction_model or model
+        self._client = None  # lazily created and reused across calls
 
     def _get_client(self):
-        """Lazy-import and instantiate Mistral client."""
-        try:
-            from mistralai.client.sdk import Mistral
-        except ImportError:
-            try:
-                from mistralai import Mistral
-            except ImportError:
-                raise ImportError(
-                    "The 'mistralai' package is required. "
-                    "Install it with: pip install mistralai"
-                )
-        return Mistral(api_key=self.api_key)
+        """Return a cached Mistral client, creating it once on first use."""
+        if self._client is None:
+            Mistral = import_mistral()
+            self._client = Mistral(
+                api_key=self.api_key,
+                timeout_ms=_CHAT_TIMEOUT_SECONDS * 1000,
+            )
+        return self._client
 
     def generate_json(
         self,

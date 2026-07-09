@@ -11,4 +11,4 @@ Pillow
 openpyxl
 pytesseract
 rapidfuzz
-mistralai>=1.0.0
+mistralai>=2.0,<3.0

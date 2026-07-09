@@ -1,10 +1,14 @@
+import base64
 import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from src.services.mistral_common import (
+    API_TIMEOUT_SECONDS,
+    MIN_TEXT_LENGTH,
+    import_mistral,
+)
 
-_MIN_TEXT_LENGTH = 50  # Characters; below this threshold text is considered unusable
-_API_TIMEOUT = 8       # Seconds
+logger = logging.getLogger(__name__)
 
 
 class MistralOcrClient:
@@ -13,48 +17,48 @@ class MistralOcrClient:
     def __init__(self, api_key: str, model: str = "mistral-ocr-latest") -> None:
         self.api_key = api_key
         self.model = model
+        self._client = None  # lazily created and reused across calls
+
+    def _get_client(self):
+        """Return a cached Mistral client, creating it once on first use."""
+        if self._client is None:
+            Mistral = import_mistral()
+            self._client = Mistral(
+                api_key=self.api_key,
+                timeout_ms=API_TIMEOUT_SECONDS * 1000,
+            )
+        return self._client
 
     def extract_text(self, pdf_path: str) -> str:
         """Convert PDF at pdf_path to structured markdown text via Mistral OCR.
+
+        The PDF is sent inline as a base64 data URI in a single OCR API call —
+        this avoids the separate upload + get_signed_url round trips that the
+        Files API flow requires, cutting OCR latency roughly in half for
+        typical documents (2 network calls saved).
 
         Returns:
             Concatenated structured text for all pages, joined by newlines.
 
         Raises:
             ImportError: If the mistralai package is not installed.
-            TimeoutError: If the API call exceeds 8 seconds.
+            TimeoutError: If the API call exceeds the configured timeout.
             Exception: On network/auth/API errors (non-ImportError).
         """
-        try:
-            from mistralai.client.sdk import Mistral
-        except ImportError:
-            try:
-                from mistralai import Mistral
-            except ImportError:
-                raise ImportError(
-                    "The 'mistralai' package is required for Mistral OCR. "
-                    "Install it with: pip install mistralai"
-                )
+        client = self._get_client()
 
-        client = Mistral(api_key=self.api_key, timeout_ms=_API_TIMEOUT * 1000)
-
-        # Upload PDF file to Mistral
         pdf_file = Path(pdf_path)
         with open(pdf_file, "rb") as f:
-            uploaded = client.files.upload(
-                file={"file_name": pdf_file.name, "content": f},
-                purpose="ocr",
-            )
+            pdf_bytes = f.read()
 
-        # Get signed URL for the uploaded file
-        signed_url = client.files.get_signed_url(file_id=uploaded.id)
+        data_uri = "data:application/pdf;base64," + base64.b64encode(pdf_bytes).decode("ascii")
 
-        # Call OCR endpoint
         response = client.ocr.process(
             model=self.model,
             document={
                 "type": "document_url",
-                "document_url": signed_url.url,
+                "document_url": data_uri,
+                "document_name": pdf_file.name,
             },
         )
 

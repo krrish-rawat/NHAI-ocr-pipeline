@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.services.llm_client import GeminiExtractionClient, build_response_schema
+from src.services.mistral_common import MIN_TEXT_LENGTH
 from src.services.pdf_renderer import PdfRenderer
 
 logger = logging.getLogger(__name__)
@@ -320,6 +321,30 @@ Return ONLY the classification string, nothing else. No explanation, no JSON, ju
 
 Examples:
 - If you see "Letter of Award" or "LOA" in the text → return "letter of award (loa)"
+- If you see "Completion Certificate" with "Provisional" → return "provisional completion certificate (pcc)"
+- If you see "Completion Certificate" without "Provisional" → return "completion certificate (cc)"
+- If you see "Financial Closure" → return "financial closure"
+- If you see "Restriction for Participation", "Debarment", "Blacklisted", or "not allowed to participate" → return "debarment records"
+- If it's an invoice, purchase order, or other document → return "other"
+"""
+
+
+# Classification prompt for IMAGE-based input (fallback path)
+CLASSIFICATION_PROMPT_IMAGE = """
+You are analyzing a government document image. Your ONLY task is to classify the document type.
+
+Examine the document carefully and identify which type it is. Choose EXACTLY ONE from this list:
+- "letter of award (loa)" - if this is a contract award letter
+- "completion certificate (cc)" - if this is a completion certificate (not provisional)
+- "provisional completion certificate (pcc)" - if this is a provisional completion certificate
+- "financial closure" - if this is a financial closure document
+- "debarment records" - if this is a debarment, blacklisting, or restriction from participation document
+- "other" - if it does not match any of the above types
+
+Return ONLY the classification string, nothing else. No explanation, no JSON, just the type string.
+
+Examples:
+- If you see "Letter of Award" or "LOA" in the header → return "letter of award (loa)"
 - If you see "Completion Certificate" with "Provisional" → return "provisional completion certificate (pcc)"
 - If you see "Completion Certificate" without "Provisional" → return "completion certificate (cc)"
 - If you see "Financial Closure" → return "financial closure"
@@ -754,30 +779,7 @@ class ExtractionService:
             else:
                 # Image-based classification (fallback)
                 images = self.renderer.render_to_images(pdf_path)
-                
-                # Lightweight classification-only prompt
-                prompt = """
-You are analyzing a government document image. Your ONLY task is to classify the document type.
-
-Examine the document carefully and identify which type it is. Choose EXACTLY ONE from this list:
-- "letter of award (loa)" - if this is a contract award letter
-- "completion certificate (cc)" - if this is a completion certificate (not provisional)
-- "provisional completion certificate (pcc)" - if this is a provisional completion certificate
-- "financial closure" - if this is a financial closure document
-- "debarment records" - if this is a debarment, blacklisting, or restriction from participation document
-- "other" - if it does not match any of the above types
-
-Return ONLY the classification string, nothing else. No explanation, no JSON, just the type string.
-
-Examples:
-- If you see "Letter of Award" or "LOA" in the header → return "letter of award (loa)"
-- If you see "Completion Certificate" with "Provisional" → return "provisional completion certificate (pcc)"
-- If you see "Completion Certificate" without "Provisional" → return "completion certificate (cc)"
-- If you see "Financial Closure" → return "financial closure"
-- If you see "Restriction for Participation", "Debarment", "Blacklisted", or "not allowed to participate" → return "debarment records"
-- If it's an invoice, purchase order, or other document → return "other"
-"""
-                doc_type = self.llm_client.generate_text(prompt, images)
+                doc_type = self.llm_client.generate_text(CLASSIFICATION_PROMPT_IMAGE, images)
             
             return doc_type.strip().lower()
         except Exception as exc:
@@ -848,10 +850,11 @@ Examples:
             if self.mistral_ocr is not None:
                 try:
                     structured_text = self.mistral_ocr.extract_text(pdf_path)
-                    if len(structured_text) < 50:
+                    if len(structured_text) < MIN_TEXT_LENGTH:
                         logger.warning(
-                            "Mistral OCR returned only %d chars, falling back to images",
+                            "Mistral OCR returned only %d chars (min %d), falling back to images",
                             len(structured_text),
+                            MIN_TEXT_LENGTH,
                         )
                         structured_text = None
                 except Exception as exc:

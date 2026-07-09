@@ -1,6 +1,38 @@
+# Environment / secrets
 .env
+.env.*
+!.env.example
+
+# Python
 venv/
+env/
+.venv/
 __pycache__/
-*.pyc
-.DS_Store
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# IDE
 .vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Uploaded / test PDFs (may contain sensitive personal data)
+*.pdf
+!templates/**/*.pdf
+
+# Build artifacts
+dist/
+build/
+*.egg
