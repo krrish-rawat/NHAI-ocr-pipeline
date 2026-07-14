@@ -132,16 +132,16 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
     - Both primary OCR and image-fallback raise exceptions; assert `ExtractionRecord.status == "failed"` and `failure_reason` is non-empty
     - _Requirements: R2.5_
 
-- [-] 12. Checkpoint — core backend complete
+- [x] 12. Checkpoint — core backend complete
   - Ensure all unit tests pass: `pytest tests/unit/ -v`
   - Fix any import errors or type errors before proceeding.
 
-- [ ] 13. Implement FastAPI app entry point and API routes (`app.py`, `src/api/routes.py`)
-  - [~] 13.1 Implement `app.py`: create `FastAPI` app; import `settings` singleton at module level (triggers startup validation); mount `static/` directory; include `api_router`; add Jinja2 `TemplateResponse` for `GET /`
+- [x] 13. Implement FastAPI app entry point and API routes (`app.py`, `src/api/routes.py`)
+  - [x] 13.1 Implement `app.py`: create `FastAPI` app; import `settings` singleton at module level (triggers startup validation); mount `static/` directory; include `api_router`; add Jinja2 `TemplateResponse` for `GET /`
     - Import of `settings` at module level ensures fail-fast on missing key before any request
     - _Requirements: R8.1, R10.4, R10.5_
 
-  - [~] 13.2 Implement `POST /extract` route
+  - [x] 13.2 Implement `POST /extract` route
     - Accept `file: UploadFile`, `fields: str`, `output_format: str = "json"`, `force_extract: str = "false"`
     - Validate content type / magic bytes (first 5 bytes `%PDF-`); return 400 if not PDF
     - Check file size ≤ `max_upload_bytes`; return 413 if exceeded
@@ -149,11 +149,11 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
     - Save PDF to temp file; call `ExtractionPipeline.run`; serialize and return result
     - _Requirements: R1.1, R1.2, R1.3, R1.4, R1.5, R3.2, R3.3, R3.4_
 
-  - [~] 13.3 Implement `POST /classify` route
+  - [x] 13.3 Implement `POST /classify` route
     - Accept `file: UploadFile`; save to temp file; call `classifier.classify`; return `{"doc_type": str}`
     - _Requirements: R3.1, R3.5_
 
-  - [~] 13.4 Implement `GET /health` route
+  - [x] 13.4 Implement `GET /health` route
     - Return `{"status": "ok", "mistral_key_present": bool}` (check key presence without logging the value)
     - _Requirements: R10.1_
 
@@ -163,7 +163,7 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
     - `test_health_endpoint`: GET `/health`; assert `{"status": "ok"}` when key is set
     - _Requirements: R1.2, R1.3, R10.1_
 
-- [~] 14. Checkpoint — API layer complete
+- [-] 14. Checkpoint — API layer complete
   - Ensure all unit tests pass: `pytest tests/unit/ -v`
   - Confirm `GET /health` returns 200 when `MISTRAL_API_KEY` is set in `.env`.
 
