@@ -1,291 +1,678 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PDF Data Extraction — Documents | NHAI | MoRTH</title>
-    <meta name="description" content="Official NHAI utility to extract structured data from Debarment Order, LOA, Appointed Date, CC, and PCC documents. Upload PDFs and export data in JSON or CSV format.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Data Extraction — NHAI | MoRTH</title>
+    <meta
+      name="description"
+      content="Official NHAI utility to extract structured data from government documents. Upload a PDF and export data in JSON or CSV format."
+    />
+    <!-- Favicon -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}"
+    />
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/styles.css" />
+    <style>
+      /* ── Rebuild-specific additions ─────────────────────────── */
+
+      /* Single-column centred layout */
+      .rebuild-workspace {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      /* Language toggle button in nav bar */
+      .lang-toggle {
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        color: #fff;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        letter-spacing: 0.2px;
+        transition: background 0.2s, border-color 0.2s;
+        white-space: nowrap;
+      }
+      .lang-toggle:hover {
+        background: rgba(255, 153, 51, 0.25);
+        border-color: #ff9933;
+      }
+      .lang-toggle:focus-visible {
+        outline: 2px solid #ff9933;
+        outline-offset: 2px;
+      }
+
+      /* Upload card */
+      .upload-card {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+      .upload-card-header {
+        background: linear-gradient(135deg, #003366 0%, #004080 100%);
+        border-bottom: 3px solid #ff9933;
+        padding: 14px 20px;
+      }
+      .upload-card-header h2 {
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 0;
+      }
+      .upload-card-body {
+        padding: 24px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      /* File input block */
+      .file-input-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #003366;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+      .file-input-wrap {
+        position: relative;
+      }
+      #pdf-input {
+        display: block;
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        background: #f5f5f5;
+        font-family: inherit;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      #pdf-input:focus {
+        outline: 2px solid #ff9933;
+        outline-offset: 2px;
+      }
+
+      /* Fields textarea block */
+      .fields-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #003366;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+      #fields-input {
+        display: block;
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        background: #fff;
+        color: #212121;
+        font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+        font-size: 14px;
+        padding: 10px 12px;
+        line-height: 1.6;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      #fields-input::placeholder {
+        color: #9e9e9e;
+        white-space: pre;
+      }
+      #fields-input:focus {
+        outline: none;
+        border-color: #ff9933;
+        box-shadow: 0 0 0 3px rgba(255, 149, 0, 0.12);
+      }
+      .fields-hint {
+        margin: 5px 0 0;
+        font-size: 12px;
+        color: #616161;
+        line-height: 1.5;
+      }
+
+      /* Extract button */
+      #extract-btn {
+        align-self: flex-start;
+        background: #003366;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 12px 28px;
+        min-height: 44px;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0, 51, 102, 0.25);
+        transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+        letter-spacing: 0.2px;
+      }
+      #extract-btn:hover:not(:disabled) {
+        background: #002244;
+        box-shadow: 0 6px 16px rgba(0, 51, 102, 0.35);
+        transform: translateY(-1px);
+      }
+      #extract-btn:active:not(:disabled) {
+        transform: translateY(0);
+      }
+      #extract-btn:focus-visible {
+        outline: 2px solid #ff9933;
+        outline-offset: 2px;
+      }
+      #extract-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      /* Progress indicator */
+      #progress-indicator {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 16px 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      .progress-spinner {
+        width: 22px;
+        height: 22px;
+        border: 3px solid #e0e0e0;
+        border-top-color: #003366;
+        border-radius: 50%;
+        flex-shrink: 0;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      #progress-indicator p {
+        margin: 0;
+        font-size: 14px;
+        color: #003366;
+        font-weight: 500;
+      }
+
+      /* Rejection banner */
+      #rejection-banner {
+        background: #fff8e1;
+        border: 1px solid #ffe082;
+        border-left: 4px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .rejection-icon {
+        font-size: 22px;
+        flex-shrink: 0;
+        line-height: 1.3;
+      }
+      .rejection-text {
+        flex: 1;
+        min-width: 200px;
+      }
+      .rejection-text p {
+        margin: 0 0 4px;
+        font-size: 14px;
+        color: #78350f;
+        font-weight: 600;
+      }
+      #rejection-doc-type {
+        font-size: 13px;
+        color: #92400e;
+        margin: 0;
+        font-weight: 400;
+      }
+      #force-extract-btn {
+        background: #f59e0b;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 10px 16px;
+        min-height: 40px;
+        cursor: pointer;
+        white-space: nowrap;
+        align-self: center;
+        transition: background 0.2s;
+        flex-shrink: 0;
+      }
+      #force-extract-btn:hover {
+        background: #d97706;
+      }
+      #force-extract-btn:focus-visible {
+        outline: 2px solid #003366;
+        outline-offset: 2px;
+      }
+
+      /* Results card */
+      #results-card {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+      }
+      .results-card-header {
+        background: linear-gradient(135deg, #003366 0%, #004080 100%);
+        border-bottom: 3px solid #ff9933;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .results-card-header h2 {
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 0;
+      }
+      #doc-type-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.85);
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 4px;
+        padding: 3px 10px;
+        white-space: nowrap;
+      }
+      .results-card-body {
+        padding: 0;
+        overflow-x: auto;
+      }
+      #results-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      #results-table thead {
+        background: #f5f5f5;
+        border-bottom: 2px solid #e0e0e0;
+      }
+      #results-table th {
+        text-align: left;
+        padding: 10px 16px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #003366;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      #results-table td {
+        padding: 10px 16px;
+        border-bottom: 1px solid #f0f0f0;
+        color: #212121;
+        vertical-align: top;
+        line-height: 1.5;
+      }
+      #results-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+      #results-table tbody tr:hover td {
+        background: #f9fbff;
+      }
+
+      /* Confidence badge */
+      .conf-badge {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 20px;
+        text-transform: capitalize;
+      }
+      .conf-high   { background: #e8f5e9; color: #1b5e20; }
+      .conf-medium { background: #fff8e1; color: #7b3f00; }
+      .conf-low    { background: #fdecea; color: #b71c1c; }
+      .conf-unknown { background: #f5f5f5; color: #616161; }
+
+      /* Download actions */
+      .results-card-footer {
+        display: flex;
+        gap: 10px;
+        padding: 14px 20px;
+        border-top: 1px solid #e0e0e0;
+        background: #fafafa;
+        flex-wrap: wrap;
+      }
+      .dl-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #003366;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 9px 16px;
+        min-height: 38px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.2s;
+      }
+      .dl-btn:hover { background: #002244; }
+      .dl-btn:focus-visible {
+        outline: 2px solid #ff9933;
+        outline-offset: 2px;
+      }
+      .dl-btn--secondary {
+        background: #fff;
+        color: #003366;
+        border: 1px solid #003366;
+      }
+      .dl-btn--secondary:hover { background: #eef3fa; }
+    </style>
   </head>
   <body>
 
-    <!-- Government Identity Bar (like india.gov.in) -->
-    <div class="gov-identity-bar" role="banner">
+    <!-- ── Government Identity Bar ───────────────────────────── -->
+    <div class="gov-identity-bar" role="banner" aria-label="Government of India identification">
       <div class="content-width gov-identity-inner">
         <span class="gov-identity-left">
-          <img src="https://india.gov.in/sites/default/files/emblem-dark.png" alt="National Emblem" class="gov-emblem" onerror="this.style.display='none'">
+          <img
+            src="https://india.gov.in/sites/default/files/emblem-dark.png"
+            alt="National Emblem of India"
+            class="gov-emblem"
+            onerror="this.style.display='none'"
+          />
           <span class="gov-identity-text">भारत सरकार | Government of India</span>
         </span>
         <span class="gov-identity-right">
-          <a href="https://morth.nic.in" target="_blank" rel="noopener" class="gov-identity-link">MoRTH</a>
-          <span class="gov-identity-sep">|</span>
-          <a href="https://nhai.gov.in" target="_blank" rel="noopener" class="gov-identity-link">NHAI Portal</a>
-          <span class="gov-identity-sep">|</span>
-          <button type="button" id="langToggle" class="gov-identity-link lang-toggle-btn" aria-label="Switch language to Hindi">हिंदी</button>
+          <a
+            href="https://morth.nic.in"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="gov-identity-link"
+            aria-label="Ministry of Road Transport and Highways (opens in new tab)"
+          >MoRTH</a>
+          <span class="gov-identity-sep" aria-hidden="true">|</span>
+          <a
+            href="https://nhai.gov.in"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="gov-identity-link"
+            aria-label="NHAI Portal (opens in new tab)"
+          >NHAI Portal</a>
         </span>
       </div>
     </div>
 
-    <!-- Skip to main content (accessibility) -->
+    <!-- ── Skip link ─────────────────────────────────────────── -->
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
+    <!-- ── Navigation Header ─────────────────────────────────── -->
     <nav class="gov-nav" aria-label="Primary navigation">
       <div class="gov-nav-inner">
-        <a href="#" class="gov-brand" aria-label="NHAI home">
-          <img class="gov-brand-logo" src="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}" alt="NHAI logo">
+        <a href="/" class="gov-brand" aria-label="NHAI — National Highways Authority of India home">
+          <img
+            class="gov-brand-logo"
+            src="{{ url_for('static', path='/National_Highways_Authority_of_India_logo.svg') }}"
+            alt="NHAI logo"
+          />
           <span class="gov-brand-text">
             <span class="gov-brand-title">NHAI</span>
             <span class="gov-brand-subtitle">National Highways Authority of India</span>
           </span>
         </a>
-        <input id="navToggle" class="nav-toggle" type="checkbox" aria-label="Toggle navigation menu">
-        <label for="navToggle" class="nav-toggle-label" aria-label="Toggle navigation menu">
-          <span></span>
-          <span></span>
-          <span></span>
-        </label>
-        <ul class="gov-nav-list" role="list">
-          <li><a href="#" class="gov-nav-link">Home</a></li>
-          <li><a href="#" class="gov-nav-link">About</a></li>
-          <li><a href="#" class="gov-nav-link gov-nav-link--active" aria-current="page">Document Records</a></li>
-          <li><a href="#" class="gov-nav-link">Help</a></li>
-          <li><a href="#" class="gov-nav-link">Contact</a></li>
-        </ul>
-        <div class="gov-nav-actions">
-          <div id="statusPill" class="status-pill status-ready" role="status" aria-live="polite">
-            <span class="status-dot" aria-hidden="true"></span>
-            <span class="status-text">Operational</span>
-          </div>
-        </div>
+
+        <!-- Language toggle pushed to the right -->
+        <div style="flex:1"></div>
+        <button
+          type="button"
+          id="lang-toggle"
+          class="lang-toggle"
+          aria-label="Toggle language between English and Hindi"
+          data-i18n-label="lang-toggle"
+        >EN | हिं</button>
       </div>
     </nav>
 
-    <!-- Main content -->
-    <main id="main-content" class="content-width workspace" aria-label="PDF extraction workspace">
+    <!-- ── Main content ───────────────────────────────────────── -->
+    <main id="main-content" class="rebuild-workspace" aria-label="PDF extraction workspace">
 
-      <!-- LEFT CARD -->
-      <section class="gov-card" aria-labelledby="upload-card-heading">
-        <div class="gov-card-header">
-          <h2 id="upload-card-heading" class="gov-card-title">Step 1 — Upload Documents</h2>
+      <!-- Upload card -->
+      <section class="upload-card" aria-labelledby="upload-heading">
+        <div class="upload-card-header">
+          <h2 id="upload-heading" data-i18n="upload-heading">Upload &amp; Extract</h2>
         </div>
-        <div class="gov-card-body">
-          <form id="extractForm" novalidate>
+        <div class="upload-card-body">
 
-            <!-- Drop zone -->
-            <div class="field-block">
-              <label class="field-label" for="files">PDF Files</label>
-
-              <!-- Idle state (shown before files selected) -->
-              <div class="dropzone" id="dropzone" role="button" tabindex="0"
-                   aria-label="Click to select or drag and drop PDF files">
-                <input id="files" name="files" type="file"
-                       accept="application/pdf,.pdf" multiple required
-                       class="dropzone-input" aria-label="Select PDF files">
-                <svg class="dropzone-icon" viewBox="0 0 48 48" fill="none"
-                     xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <rect x="8" y="6" width="24" height="32"
-                        stroke="#003B7A" stroke-width="2" fill="#F0F9FF"/>
-                  <path d="M28 6v10h10" stroke="#003B7A" stroke-width="2" fill="none"/>
-                  <line x1="34" y1="30" x2="34" y2="44" stroke="#FF9500" stroke-width="2"/>
-                  <polyline points="29,35 34,30 39,35" stroke="#FF9500" stroke-width="2" fill="none"/>
-                  <line x1="14" y1="24" x2="26" y2="24" stroke="#003B7A" stroke-width="1.5"/>
-                  <line x1="14" y1="29" x2="26" y2="29" stroke="#003B7A" stroke-width="1.5"/>
-                  <line x1="14" y1="34" x2="22" y2="34" stroke="#003B7A" stroke-width="1.5"/>
-                </svg>
-                <p class="dropzone-primary">Click to select or drag &amp; drop PDF files</p>
-                <p class="dropzone-secondary">Supported format: PDF &nbsp;|&nbsp; Max size: 25 MB per file</p>
-              </div>
-
-              <!-- Success state (shown after files selected, hidden by default) -->
-              <div id="fileSuccessPanel" class="file-success-panel" hidden aria-live="polite">
-                <div class="file-success-header">
-                  <!-- Checkmark icon -->
-                  <svg class="file-success-icon" viewBox="0 0 20 20" fill="none"
-                       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <circle cx="10" cy="10" r="9" stroke="#10B981" stroke-width="1.5" fill="#ECFDF5"/>
-                    <polyline points="5.5,10.5 8.5,13.5 14.5,7" stroke="#10B981"
-                              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                  </svg>
-                  <span class="file-success-label" id="fileSuccessLabel">1 file ready</span>
-                  <button type="button" id="clearFilesBtn" class="file-clear-btn"
-                          aria-label="Remove all selected files">&#10005; Remove</button>
-                </div>
-                <ul id="fileList" class="file-list" aria-label="Selected files"></ul>
-              </div>
+          <!-- PDF file input -->
+          <div>
+            <label class="file-input-label" for="pdf-input" data-i18n="label-pdf-file">
+              PDF Document
+            </label>
+            <div class="file-input-wrap">
+              <input
+                type="file"
+                id="pdf-input"
+                name="pdf_file"
+                accept=".pdf"
+                required
+                aria-required="true"
+                aria-describedby="pdf-input-hint"
+              />
             </div>
-
-            <!-- Attributes — empty textarea with placeholder only -->
-            <div class="field-block">
-              <label class="field-label" for="attributes">Extraction Fields</label>
-              <textarea id="attributes" name="attributes" required
-                        class="gov-textarea"
-                        aria-describedby="attributes-hint"
-                        placeholder="name&#10;date&#10;reference_id&#10;project_name&#10;..."></textarea>
-              <p id="attributes-hint" class="field-hint">Enter one field name per line, or separate with commas (e.g. name, date, reference_id).</p>
-            </div>
-
-            <!-- Hidden format field — always JSON; format toggle removed -->
-            <input type="hidden" name="output_format" value="json">
-
-            <!-- Actions — download button removed -->
-            <div class="actions">
-              <button id="submitButton" type="submit" class="btn btn-primary"
-                      aria-label="Extract data from uploaded PDFs">
-                <span class="btn-spinner" id="btnSpinner" aria-hidden="true" hidden></span>
-                <span id="btnLabel">Extract Data</span>
-              </button>
-            </div>
-
-            <!-- Processing progress bar (shown during extraction) -->
-            <div id="progressContainer" class="progress-container" hidden aria-live="polite" aria-label="Extraction progress">
-              <div class="progress-bar-wrapper">
-                <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progressBarTrack">
-                  <div class="progress-fill" id="progressFill"></div>
-                </div>
-                <span class="progress-percentage" id="progressPct">0%</span>
-              </div>
-              <p class="progress-status" id="progressStatus">Reading PDF document...</p>
-              <p class="progress-timer" id="progressTimer"></p>
-            </div>
-
-            <p id="message" class="field-message" aria-live="assertive" role="alert"></p>
-          </form>
-        </div>
-      </section>
-
-      <!-- Document validity banner — shown independently above results -->
-      <div id="docValidityBanner" class="doc-validity-banner" hidden role="alert" aria-live="assertive"></div>
-
-      <!-- RESULTS CARD (hidden until extraction completes) -->
-      <section class="gov-card results-card" aria-labelledby="results-card-heading" id="resultsCard" hidden>
-        <div class="gov-card-header">
-          <h2 id="results-card-heading" class="gov-card-title">Extracted Document Record</h2>
-        </div>
-        <div class="gov-card-body gov-card-body--results">
-
-          <!-- Result form populated after extraction -->
-          <form id="resultForm" class="result-form" hidden novalidate
-                aria-label="Extracted data fields"></form>
-        </div>
-      </section>
-
-      <section class="gov-card summary-card" aria-labelledby="summary-card-heading">
-        <div class="gov-card-header">
-          <h2 id="summary-card-heading" class="gov-card-title">PDF Summary Dashboard</h2>
-        </div>
-        <div class="gov-card-body summary-card-body">
-          <div id="summaryPlaceholder" class="summary-empty-state" aria-live="polite">
-            <p class="summary-empty-title">No document summary yet</p>
-            <p class="summary-empty-sub">A high-level PDF overview will appear after upload.</p>
+            <p id="pdf-input-hint" class="fields-hint" data-i18n="hint-pdf-file">
+              Accepted format: PDF &nbsp;|&nbsp; Max size: 25 MB
+            </p>
           </div>
-          <div id="summaryPanel" class="summary-panel" hidden aria-live="polite"></div>
+
+          <!-- Fields textarea -->
+          <div>
+            <label class="fields-label" for="fields-input" data-i18n="label-fields">
+              Fields to Extract
+            </label>
+            <textarea
+              id="fields-input"
+              name="fields"
+              required
+              aria-required="true"
+              aria-describedby="fields-hint"
+              placeholder="Name&#10;Date of Birth&#10;PAN"
+            ></textarea>
+            <p id="fields-hint" class="fields-hint" data-i18n="hint-fields">
+              Be specific — e.g. "Agreement Date" not just "Date". One field per line.
+            </p>
+          </div>
+
+          <!-- Extract button -->
+          <button
+            type="button"
+            id="extract-btn"
+            data-i18n="extract"
+            aria-label="Extract data from the uploaded PDF"
+          >Extract</button>
+
+        </div>
+      </section>
+
+      <!-- Progress indicator (hidden by default) -->
+      <div
+        id="progress-indicator"
+        role="status"
+        aria-live="polite"
+        aria-label="Extraction in progress"
+        style="display:none"
+      >
+        <span class="progress-spinner" aria-hidden="true"></span>
+        <p data-i18n="progress-msg">Processing document…</p>
+      </div>
+
+      <!-- Rejection banner (hidden by default) -->
+      <div
+        id="rejection-banner"
+        role="alert"
+        aria-live="assertive"
+        aria-label="Document type rejected"
+        style="display:none"
+      >
+        <span class="rejection-icon" aria-hidden="true">⚠️</span>
+        <div class="rejection-text">
+          <p data-i18n="rejection-title">Document type not recognised or not supported</p>
+          <p id="rejection-doc-type"></p>
+        </div>
+        <button
+          type="button"
+          id="force-extract-btn"
+          data-i18n="force-extract"
+          aria-label="Force extraction despite document type rejection"
+        >Force Extract Anyway</button>
+      </div>
+
+      <!-- Results card (hidden by default) -->
+      <section
+        id="results-card"
+        aria-labelledby="results-heading"
+        style="display:none"
+      >
+        <div class="results-card-header">
+          <h2 id="results-heading" data-i18n="results-heading">Extracted Data</h2>
+          <span
+            id="doc-type-label"
+            aria-label="Detected document type"
+          ></span>
+        </div>
+
+        <div class="results-card-body">
+          <table
+            id="results-table"
+            aria-label="Extracted fields and values"
+          >
+            <thead>
+              <tr>
+                <th scope="col" data-i18n="col-field">Field</th>
+                <th scope="col" data-i18n="col-value">Value</th>
+                <th scope="col" data-i18n="col-confidence">Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Rows injected by ui.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="results-card-footer">
+          <button
+            type="button"
+            id="download-json-btn"
+            class="dl-btn"
+            data-i18n="download-json"
+            aria-label="Download extracted data as JSON"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M7 1v8M4 6l3 3 3-3M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Download JSON
+          </button>
+          <button
+            type="button"
+            id="download-csv-btn"
+            class="dl-btn dl-btn--secondary"
+            data-i18n="download-csv"
+            aria-label="Download extracted data as CSV"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M7 1v8M4 6l3 3 3-3M2 10v2a1 1 0 001 1h8a1 1 0 001-1v-2"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Download CSV
+          </button>
         </div>
       </section>
 
     </main>
 
-    <!-- Footer -->
+    <!-- ── Footer ─────────────────────────────────────────────── -->
     <footer class="site-footer" aria-label="Site footer">
       <div class="footer-top">
         <div class="content-width footer-top-grid">
           <div class="footer-col">
-            <h3 class="footer-heading">National Highways Authority of India</h3>
+            <h3 class="footer-heading" data-i18n="footer-nhai-heading">
+              National Highways Authority of India
+            </h3>
             <address class="footer-address">
-              G-5 &amp; 6, Sector 10, Dwarka<br>
-              New Delhi - 110075<br>
+              G-5 &amp; 6, Sector 10, Dwarka<br />
+              New Delhi - 110075<br />
               <a href="tel:+911125074100" class="footer-link">+91-11-25074100</a>
             </address>
           </div>
           <div class="footer-col">
-            <h3 class="footer-heading">Quick Links</h3>
+            <h3 class="footer-heading" data-i18n="footer-links-heading">Quick Links</h3>
             <ul class="footer-links" role="list">
-              <li><a href="#" class="footer-link">Home</a></li>
-              <li><a href="#" class="footer-link">Tenders</a></li>
-              <li><a href="#" class="footer-link">Contact</a></li>
-              <li><a href="#" class="footer-link">RTI</a></li>
-              <li><a href="#" class="footer-link">Disclaimer</a></li>
+              <li><a href="https://nhai.gov.in" target="_blank" rel="noopener noreferrer" class="footer-link">NHAI Portal</a></li>
+              <li><a href="https://morth.nic.in" target="_blank" rel="noopener noreferrer" class="footer-link">MoRTH</a></li>
+              <li><a href="https://india.gov.in" target="_blank" rel="noopener noreferrer" class="footer-link">India.gov.in</a></li>
+              <li><a href="https://nic.in" target="_blank" rel="noopener noreferrer" class="footer-link">NIC</a></li>
             </ul>
           </div>
           <div class="footer-col">
-            <h3 class="footer-heading">Useful Links</h3>
+            <h3 class="footer-heading" data-i18n="footer-legal-heading">Legal</h3>
             <ul class="footer-links" role="list">
-              <li><a href="https://morth.nic.in" target="_blank" rel="noopener" class="footer-link">MoRTH</a></li>
-              <li><a href="https://nic.in" target="_blank" rel="noopener" class="footer-link">NIC</a></li>
-              <li><a href="https://india.gov.in" target="_blank" rel="noopener" class="footer-link">India.gov.in</a></li>
-              <li><a href="https://digitalindia.gov.in" target="_blank" rel="noopener" class="footer-link">Digital India</a></li>
+              <li><a href="#" class="footer-link" data-i18n="footer-disclaimer">Disclaimer</a></li>
+              <li><a href="#" class="footer-link" data-i18n="footer-rti">RTI</a></li>
+              <li><a href="#" class="footer-link" data-i18n="footer-contact">Contact</a></li>
             </ul>
           </div>
         </div>
       </div>
       <div class="footer-bottom">
         <div class="content-width footer-bottom-inner">
-          <span>© 2024 NHAI. Content owned and maintained by NHAI.</span>
+          <span data-i18n="footer-copyright">© 2025 NHAI. Content owned and maintained by NHAI.</span>
           <span class="tricolor" aria-hidden="true">🇮🇳</span>
-          <span>Designed &amp; Developed by NIC &nbsp;|&nbsp; Last Updated: June 2025</span>
+          <span data-i18n="footer-credit">Designed &amp; Developed by NIC | Last Updated: 2025</span>
         </div>
       </div>
     </footer>
 
-    <!-- PDF Citation Modal (disabled) -->
-    <div id="pdfModal" class="pdf-modal-overlay" hidden aria-modal="true" role="dialog" aria-label="PDF Source Viewer" style="display:none">>
-      <div class="pdf-modal">
-        <div class="pdf-modal-header">
-          <span class="pdf-modal-title" id="pdfModalTitle">Source Document</span>
-          <div class="pdf-modal-meta">
-            <span id="pdfPageInfo" class="pdf-page-info"></span>
-          </div>
-          <button id="pdfModalClose" class="pdf-modal-close" aria-label="Close PDF viewer">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <line x1="2" y1="2" x2="16" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <line x1="16" y1="2" x2="2" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </div>
-        <div class="pdf-modal-body">
-          <div id="pdfViewerWrap" class="pdf-viewer-wrap">
-            <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
-              <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
-              <div id="pdfHighlight" class="pdf-highlight" hidden></div>
-              <div id="pdfTooltip" class="source-tooltip" hidden>Source location</div>
-            </div>
-          </div>
-          <section id="pdfFallbackContent" class="pdf-fallback-content" hidden aria-live="polite">
-            <p id="pdfErrorMsg" class="pdf-error-msg"></p>
-            <dl class="source-fallback-details">
-              <div>
-                <dt>Source label</dt>
-                <dd id="pdfFallbackLabel">Source field</dd>
-              </div>
-              <div>
-                <dt>Extracted value</dt>
-                <dd id="pdfFallbackValue" class="source-value-highlight">Null</dd>
-              </div>
-              <div>
-                <dt>Page number</dt>
-                <dd id="pdfFallbackPage">Unavailable</dd>
-              </div>
-            </dl>
-            <p class="source-fallback-note">Source data extracted from PDF. Click 'Try Again' to reload.</p>
-            <div class="pdf-fallback-actions">
-              <button type="button" id="pdfTryAgainBtn" class="pdf-fallback-btn pdf-fallback-btn--primary">🔄 Try Again</button>
-              <button type="button" id="pdfDownloadBtn" class="pdf-fallback-btn">Download PDF</button>
-              <button type="button" id="pdfFallbackCloseBtn" class="pdf-fallback-btn">Close</button>
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
+    <!-- ── ES module scripts ──────────────────────────────────── -->
+    <script type="module" src="/static/js/validation.js"></script>
+    <script type="module" src="/static/js/progress.js"></script>
+    <script type="module" src="/static/js/lang.js"></script>
+    <script type="module" src="/static/js/api.js"></script>
+    <script type="module" src="/static/js/ui.js"></script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-      window.pdfjsWorker = window.pdfjsWorker || {};
-      window.pdfjsWorker.WorkerMessageHandler = window.pdfjsWorker.WorkerMessageHandler || null;
-    </script>
-    <script src="{{ url_for('static', path='/app.js') }}"></script>
   </body>
 </html>

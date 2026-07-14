@@ -163,12 +163,12 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
     - `test_health_endpoint`: GET `/health`; assert `{"status": "ok"}` when key is set
     - _Requirements: R1.2, R1.3, R10.1_
 
-- [-] 14. Checkpoint — API layer complete
+- [x] 14. Checkpoint — API layer complete
   - Ensure all unit tests pass: `pytest tests/unit/ -v`
   - Confirm `GET /health` returns 200 when `MISTRAL_API_KEY` is set in `.env`.
 
-- [ ] 15. Implement CSS and HTML template (`static/styles.css`, `templates/index.html`)
-  - [~] 15.1 Write `static/styles.css` with NHAI color scheme
+- [x] 15. Implement CSS and HTML template (`static/styles.css`, `templates/index.html`)
+  - [x] 15.1 Write `static/styles.css` with NHAI color scheme
     - Navy `#003366` for header, primary buttons, and table headers
     - Saffron `#FF9933` for accent borders, focus rings, and active states
     - White background, dark grey (`#333`) body text
@@ -177,7 +177,7 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
     - Progress indicator hidden by default
     - _Requirements: R8.1, R8.3_
 
-  - [~] 15.2 Write `templates/index.html` Jinja2 template
+  - [x] 15.2 Write `templates/index.html` Jinja2 template
     - NHAI logo + title header with `[EN | हिं]` language toggle
     - PDF upload dropzone (`<input type="file" accept=".pdf">`)
     - Fields textarea with hint: "be specific — e.g. 'Agreement Date' not just 'Date'"
@@ -190,28 +190,28 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
     - _Requirements: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7_
 
 - [ ] 16. Implement frontend ES modules (`static/js/`)
-  - [~] 16.1 Implement `static/js/validation.js`
+  - [x] 16.1 Implement `static/js/validation.js`
     - `export function validateFile(file)` — returns `null` (ok) or an error string; checks file is a PDF by MIME type and `.pdf` extension
     - `export function validateFields(fieldsText)` — returns `null` or error string; checks at least one non-empty field after splitting on commas/newlines
     - _Requirements: R1.2, R1.4, R8.1_
 
-  - [~] 16.2 Implement `static/js/progress.js`
+  - [x] 16.2 Implement `static/js/progress.js`
     - `export function showProgress(message)`, `hideProgress()`, `updateProgress(message)` — toggle `display` on `#progress` element
     - _Requirements: R8.4_
 
-  - [~] 16.3 Implement `static/js/lang.js`
+  - [x] 16.3 Implement `static/js/lang.js`
     - `const STRINGS = { en: {...}, hi: {...} }` covering all `data-i18n` keys used in `index.html` (upload, extract, fields_hint, processing, download_json, download_csv, force_extract, rejection_message, etc.)
     - `export function applyLanguage(lang)` — updates `textContent` of every `[data-i18n]` element
     - `export function getCurrentLang()` — returns current active language code
     - _Requirements: R8.2_
 
-  - [~] 16.4 Implement `static/js/api.js`
+  - [x] 16.4 Implement `static/js/api.js`
     - `export async function postExtract(formData)` — POST to `/extract`; returns parsed JSON or `Blob` (for CSV)
     - `export async function postClassify(formData)` — POST to `/classify`; returns parsed JSON `{doc_type}`
     - Throw on non-OK HTTP status with the response body as the error message
     - _Requirements: R1.1, R3.1_
 
-  - [~] 16.5 Implement `static/js/ui.js`
+  - [x] 16.5 Implement `static/js/ui.js`
     - `export function showResultsCard(response)` — reveal `#results-card`, populate field/value/source table, set doc-type label
     - `export function hideResultsCard()` — hide `#results-card`
     - `export function showRejectionBanner(docType, onForceExtract)` — reveal `#rejection-banner`, set doc-type text, wire Force Extract button callback
@@ -223,7 +223,7 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
     - Wire Download JSON / Download CSV buttons to trigger `Blob` download
     - _Requirements: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7_
 
-- [~] 17. Checkpoint — frontend complete
+- [x] 17. Checkpoint — frontend complete
   - Start the dev server manually (`uvicorn app:app --reload`) and verify `GET /` serves the page without JS console errors.
 
 - [ ] 18. Implement property-based tests (`tests/property/test_properties.py`)
