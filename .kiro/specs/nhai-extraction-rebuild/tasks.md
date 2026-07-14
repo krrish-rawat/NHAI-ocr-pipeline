@@ -226,63 +226,63 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
 - [x] 17. Checkpoint — frontend complete
   - Start the dev server manually (`uvicorn app:app --reload`) and verify `GET /` serves the page without JS console errors.
 
-- [ ] 18. Implement property-based tests (`tests/property/test_properties.py`)
-  - [~] 18.1 Write `test_output_stability` — Property 1
+- [x] 18. Implement property-based tests (`tests/property/test_properties.py`)
+  - [x] 18.1 Write `test_output_stability` — Property 1
     - Strategy: `ocr_text=st.text(min_size=50)`, `field_name=st.text(min_size=1, max_size=50).filter(str.strip)`; `max_examples=100`
     - Use `MockMistralClient` that returns a value present in the text on first call; assert second call (cache hit) returns identical `FieldExtraction`; assert result unchanged after extracting an unrelated field in between
     - **Property 1: Output Stability**
     - **Validates: Requirements R5.1, R5.2, R5.3, R5.4, R5.5**
 
-  - [~] 18.2 Write `test_verbatim_grounding` — Property 2
+  - [x] 18.2 Write `test_verbatim_grounding` — Property 2
     - Strategy: `ocr_text=st.text(min_size=20)`, `field_name=st.text(min_size=1, max_size=50)`; `max_examples=100`
     - Use `MockMistralClient(returns_arbitrary_values=True)` that may return values NOT in the text; assert if `result.value != "Null"` then `normalize_text(result.value) in normalize_text(ocr_text)`
     - **Property 2: Verbatim Grounding**
     - **Validates: Requirements R4.2, R4.6**
 
-  - [~] 18.3 Write `test_output_schema_stability` — Property 3
+  - [x] 18.3 Write `test_output_schema_stability` — Property 3
     - Strategy: `field_names=st.lists(...)`, `records=st.lists(build_extraction_record_strategy(), ...)`; `max_examples=100`
     - Assert JSON output has keys `doc_type`, `field_names`, `records`; every record contains every requested field name; CSV columns are exactly `[source_file, *field_names, status, failure_reason]`; Hindi characters survive round-trip
     - **Property 3: Output Schema Stability**
     - **Validates: Requirements R7.1, R7.2, R7.3, R7.4, R7.6**
 
-  - [~] 18.4 Write `test_classification_gate` — Property 4
+  - [x] 18.4 Write `test_classification_gate` — Property 4
     - Strategy: `ocr_text=st.text(min_size=10)`, `force_extract=st.booleans()`; `max_examples=100`
     - Use `MockClassifier(returns="other")`; when `force_extract=False` assert all records have `status="rejected"` and non-empty `failure_reason`; when `force_extract=True` assert no record has `status="rejected"`
     - **Property 4: Classification Gate**
     - **Validates: Requirements R3.3, R3.4**
 
-  - [~] 18.5 Write `test_ocr_single_call_and_cache` — Property 5
+  - [x] 18.5 Write `test_ocr_single_call_and_cache` — Property 5
     - Strategy: `ocr_text=st.text(min_size=50)`, `field_names=st.lists(st.text(min_size=1), min_size=2, max_size=8, unique=True)`; `max_examples=100`
     - Use `CountingMockOcr`; assert `ocr.call_count == 1` after pipeline run; add a duplicate field name (uppercase of first); assert LLM call count for that field is 1 (cache hit for duplicate)
     - **Property 5: OCR Single-Call Invariant and Stability Cache Hit Rate**
     - **Validates: Requirements R9.2, R9.3, R5.5**
 
-- [ ] 19. Implement unit tests (`tests/unit/`)
-  - [~] 19.1 Write `test_normalize_fields` — deduplication
+- [x] 19. Implement unit tests (`tests/unit/`)
+  - [x] 19.1 Write `test_normalize_fields` — deduplication
     - _Requirements: R1.5_
 
-  - [~] 19.2 Write `test_grounding_check` — all four confidence levels
+  - [x] 19.2 Write `test_grounding_check` — all four confidence levels
     - _Requirements: R4.7_
 
-  - [~] 19.3 Write `test_ocr_fallback_trigger` and `test_ocr_error_fallback`
+  - [x] 19.3 Write `test_ocr_fallback_trigger` and `test_ocr_error_fallback`
     - _Requirements: R2.3, R2.4_
 
-  - [~] 19.4 Write `test_double_failure`
+  - [x] 19.4 Write `test_double_failure`
     - _Requirements: R2.5_
 
-  - [~] 19.5 Write `test_pydantic_validation_retry`
+  - [x] 19.5 Write `test_pydantic_validation_retry`
     - _Requirements: R4.2_
 
-  - [~] 19.6 Write `test_temperature_zero`
+  - [x] 19.6 Write `test_temperature_zero`
     - _Requirements: R5.6_
 
-  - [~] 19.7 Write `test_invalid_file_type`, `test_file_too_large`, `test_health_endpoint`
+  - [x] 19.7 Write `test_invalid_file_type`, `test_file_too_large`, `test_health_endpoint`
     - _Requirements: R1.2, R1.3, R10.1_
 
-  - [~] 19.8 Write `test_settings_missing_key`
+  - [x] 19.8 Write `test_settings_missing_key`
     - _Requirements: R10.4_
 
-  - [~] 19.9 Write `test_csv_unicode`
+  - [x] 19.9 Write `test_csv_unicode`
     - _Requirements: R7.6_
 
 - [ ] 20. Implement integration / fixture tests (`tests/integration/`)
