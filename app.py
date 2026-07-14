@@ -1,263 +1,44 @@
-import asyncio
-import json
+"""NHAI PDF Data Extraction — FastAPI application entry point (rebuild).
+
+Importing settings at module level triggers startup validation:
+if MISTRAL_API_KEY is absent, the process fails immediately with a clear error.
+"""
 import logging
-import os
-import tempfile
-import uuid
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-logger = logging.getLogger("nhai.app")
-
-
-def _safe_error_message(exc: Exception) -> str:
-    """Return a user-safe error message without leaking internal details.
-
-    Full exception detail is logged server-side; the client only sees a
-    generic message plus the exception type name.
-    """
-    return f"Processing failed ({type(exc).__name__}). Please try again or contact support."
-
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from starlette.concurrency import run_in_threadpool
 
-from src.services.extraction_service import (
-    build_extraction_service,
-    normalize_attributes,
-)
-from src.services.serializers import records_to_csv, records_to_json_payload
+# Import settings FIRST — this triggers fail-fast validation at startup.
+# If MISTRAL_API_KEY is absent, this import raises ValueError and the
+# server refuses to start rather than failing silently on the first request.
 from src.services.settings import settings
-from src.services.summary_service import build_summary_service
-
-BASE_DIR = Path(__file__).resolve().parent
+from src.services.pipeline import build_pipeline
+from src.api.routes import create_router
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
 )
 
-app = FastAPI(title="NHAI PDF Parser")
+BASE_DIR = Path(__file__).resolve().parent
+
+app = FastAPI(
+    title="NHAI PDF Data Extraction",
+    description="Extract structured fields from NHAI government PDFs.",
+    version="2.0.0",
+)
+
+# Mount static files
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+# Templates
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
-extraction_service = build_extraction_service()
-summary_service = build_summary_service()
 
+# Build the extraction pipeline (wires OCR, classifier, extractor from settings)
+pipeline = build_pipeline(settings)
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
-
-
-@app.get("/test-validation", response_class=HTMLResponse)
-async def test_validation(request: Request):
-    """Testing tool for document validation"""
-    return templates.TemplateResponse(request, "test-validation.html")
-
-
-def _validate_pdf_upload(upload: UploadFile) -> None:
-    filename = upload.filename or ""
-    content_type = upload.content_type or ""
-
-    if not filename.lower().endswith(".pdf") and content_type != "application/pdf":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Only PDF uploads are supported: {filename or 'unnamed file'}",
-        )
-
-
-async def _save_upload_to_temp_pdf(upload: UploadFile) -> str:
-    suffix = Path(upload.filename or "upload.pdf").suffix or ".pdf"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        total_size = 0
-        while chunk := await upload.read(1024 * 1024):
-            total_size += len(chunk)
-            if total_size > settings.max_upload_bytes:
-                raise HTTPException(status_code=413, detail="Uploaded PDF is too large.")
-            tmp.write(chunk)
-        return tmp.name
-
-
-async def _process_single_upload(
-    upload: UploadFile,
-    requested_attributes: list[str],
-    skip_validation: bool = False,
-) -> dict[str, object]:
-    """Save one upload to a temp file, extract, then clean up.
-    
-    Returns a dict with "records" and "document_validity" keys.
-    """
-    source_file = upload.filename or "uploaded.pdf"
-    req_id = uuid.uuid4().hex[:8]
-    temp_path = ""
-    try:
-        _validate_pdf_upload(upload)
-        temp_path = await _save_upload_to_temp_pdf(upload)
-        return await run_in_threadpool(
-            extraction_service.extract_file_records,
-            temp_path,
-            source_file,
-            requested_attributes,
-            skip_validation,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        # Log full detail server-side; return sanitized message to client.
-        logger.error("[%s] Upload processing failed for %s: %s", req_id, source_file, exc, exc_info=True)
-        safe_msg = _safe_error_message(exc)
-        return {
-            "records": [
-                {
-                    "source_file": source_file,
-                    **{attr: "Null" for attr in requested_attributes},
-                    "source_meta": {
-                        attr: {"pageNumber": 0, "text": "Null", "confidence": "unknown"}
-                        for attr in requested_attributes
-                    },
-                    "status": "Failed",
-                    "failure_reason": safe_msg,
-                }
-            ],
-            "document_validity": {
-                "is_valid": False,
-                "detected_type": "Error",
-                "confidence": "high",
-                "message": safe_msg,
-            },
-        }
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.unlink(temp_path)
-
-
-async def _summarize_single_upload(upload: UploadFile) -> dict[str, list[str] | str]:
-    source_file = upload.filename or "uploaded.pdf"
-    temp_path = ""
-    try:
-        _validate_pdf_upload(upload)
-        temp_path = await _save_upload_to_temp_pdf(upload)
-        result = await asyncio.wait_for(
-            run_in_threadpool(summary_service.summarize_file, temp_path),
-            timeout=settings.summary_timeout_seconds,
-        )
-        return {
-            "source_file": source_file,
-            **result,
-        }
-    except asyncio.TimeoutError:
-        return {
-            "source_file": source_file,
-            "summary_points": [],
-            "error": "Summary generation timed out. Try a smaller PDF or retry.",
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        return {
-            "source_file": source_file,
-            "summary_points": [],
-            "error": str(exc),
-        }
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.unlink(temp_path)
-
-
-@app.post("/extract")
-async def extract(
-    files: list[UploadFile] = File(...),
-    attributes: str = Form(...),
-    output_format: str = Form("json"),
-    skip_validation: str = Form("false"),
-):
-    requested_attributes = normalize_attributes(attributes)
-    if not requested_attributes:
-        raise HTTPException(status_code=400, detail="Provide at least one attribute.")
-
-    if output_format not in {"json", "csv"}:
-        raise HTTPException(status_code=400, detail="Output format must be json or csv.")
-
-    if not files:
-        raise HTTPException(status_code=400, detail="Upload at least one PDF file.")
-
-    # All files are saved and dispatched to the thread pool concurrently so
-    # N PDFs take ~the time of the slowest single file, not N × that time.
-    should_skip_validation = skip_validation.lower() in ("true", "1", "yes")
-    results: list[dict[str, object]] = await asyncio.gather(
-        *[_process_single_upload(upload, requested_attributes, should_skip_validation) for upload in files]
-    )
-
-    # Merge results: collect all records and use the first file's document_validity
-    # (For multi-file uploads, we only validate the first document)
-    all_records: list[dict[str, object]] = []
-    document_validity = None
-    
-    for result in results:
-        all_records.extend(result.get("records", []))
-        if document_validity is None and "document_validity" in result:
-            document_validity = result["document_validity"]
-
-    if output_format == "csv":
-        csv_output = records_to_csv(all_records, requested_attributes)
-        return Response(
-            content=csv_output,
-            media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="extracted_records.csv"'},
-        )
-
-    # Build JSON response with document_validity at root level
-    response_data = {
-        "attributes": requested_attributes,
-        "records": all_records,
-    }
-    if document_validity:
-        response_data["document_validity"] = document_validity
-
-    return Response(
-        content=json.dumps(response_data, indent=2, ensure_ascii=False),
-        media_type="application/json",
-    )
-
-
-@app.post("/summarize")
-async def summarize(file: UploadFile = File(...)):
-    return await _summarize_single_upload(file)
-
-
-@app.post("/test-classify")
-async def test_classify(file: UploadFile = File(...)):
-    """Test endpoint to verify document classification is working."""
-    temp_path = ""
-    try:
-        _validate_pdf_upload(file)
-        temp_path = await _save_upload_to_temp_pdf(file)
-        
-        # Test classification only
-        result = await run_in_threadpool(
-            extraction_service.classify_document,
-            temp_path,
-        )
-        
-        from src.services.extraction_service import _is_accepted_doc_type
-        is_valid = _is_accepted_doc_type(result)
-        
-        return {
-            "classified_as": result,
-            "is_valid": is_valid,
-            "message": "Classification successful"
-        }
-    except Exception as exc:
-        return {
-            "error": str(exc),
-            "message": "Classification failed"
-        }
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.unlink(temp_path)
-
+# Include routes
+api_router = create_router(pipeline=pipeline, settings=settings, templates=templates)
+app.include_router(api_router)
