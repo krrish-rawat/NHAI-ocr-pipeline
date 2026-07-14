@@ -285,27 +285,27 @@ All code is Python 3.12+ / FastAPI / Pydantic v2 on the backend; vanilla ES-modu
   - [x] 19.9 Write `test_csv_unicode`
     - _Requirements: R7.6_
 
-- [ ] 20. Implement integration / fixture tests (`tests/integration/`)
-  - [~] 20.1 Add anonymized fixture PDFs to `tests/fixtures/` (LOA, financial closure, debarment, and a non-NHAI PDF — small, no real PII)
+- [x] 20. Implement integration / fixture tests (`tests/integration/`)
+  - [x] 20.1 Add anonymized fixture PDFs to `tests/fixtures/` (LOA, financial closure, debarment, and a non-NHAI PDF — small, no real PII)
     - _Requirements: R4.3, R4.4, R3.3_
 
-  - [~] 20.2 Write `test_loa_extraction_known_values`
+  - [x] 20.2 Write `test_loa_extraction_known_values`
     - Upload LOA fixture; assert known field values match expected strings; validates verbatim grounding on tabular document
     - _Requirements: R4.1, R4.2, R4.6_
 
-  - [~] 20.3 Write `test_financial_closure_prose_values`
-    - Upload financial closure fixture; assert values embedded in prose sentences (e.g. "Contract Value") are correctly extracted; validates semantic grounding fix for R4
+  - [x] 20.3 Write `test_financial_closure_prose_values`
+    - Upload financial closure fixture; assert values embedded in prose sentences (e.g. "Total Project Cost", "Lender Contribution") are correctly extracted and not swapped between two similar amounts in the same sentence; validates semantic grounding fix for R4
     - _Requirements: R4.3, R4.4, R4.5_
 
-  - [~] 20.4 Write `test_debarment_extraction`
+  - [x] 20.4 Write `test_debarment_extraction`
     - Upload debarment fixture; assert name and PAN fields are found with non-Null values
     - _Requirements: R4.1, R3.1_
 
-  - [~] 20.5 Write `test_other_document_rejected`
+  - [x] 20.5 Write `test_other_document_rejected`
     - Upload non-NHAI PDF without `force_extract`; assert `status = "rejected"` and non-empty `failure_reason`
     - _Requirements: R3.3_
 
-- [~] 21. Final checkpoint — all tests pass
+- [x] 21. Final checkpoint — all tests pass
   - Run `pytest tests/ -v` and ensure all non-optional tests pass.
   - Run `pytest tests/property/ -v` for property-based tests (requires live Mistral API or full mocks).
   - Ask the user if any issues arise before marking complete.
